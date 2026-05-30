@@ -16,15 +16,9 @@ SessionLocal = sessionmaker(
 
 Base = declarative_base()
 
-def get_bg():
+def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
-try:
-    with engine.connect() as connection:
-        print("Conexión exitosa a la BD")
-except Exception as e:
-    print(f"Error en la conexión {e}")

@@ -2,6 +2,8 @@ import utils.database
 
 from fastapi import FastAPI
 
+from routes.auth import router as auth_routers
+
 app = FastAPI()
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,3 +18,5 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"status": "healthy", "version": "0.0.0", "service": "ASEBEP-API"}
+
+app.include_router(auth_routers)
