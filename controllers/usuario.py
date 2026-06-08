@@ -25,7 +25,10 @@ def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
         if anio_ingreso > fecha_actual.year or (anio_ingreso == fecha_actual.year and mes_ingreso > fecha_actual.month):
             break
 
-        if mes_ingreso not in [1, 12]:
+        #Incluir enero del año 2024, y 2025
+        enero_especial = (mes_ingreso == 1 and anio_ingreso in [2024, 2025])
+
+        if mes_ingreso not in [1, 12] or enero_especial:
             meses_activos.append((anio_ingreso, mes_ingreso))
 
         if mes_ingreso == 12:
