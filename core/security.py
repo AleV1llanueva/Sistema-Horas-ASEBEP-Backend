@@ -71,7 +71,7 @@ def require_rol(*roles_permitidos):
             if payload.get("rol") not in roles_permitidos:
                 raise HTTPException(status_code=403, detail="Sin permisos suficientes")
             
-            request.state.correo = payload.get("sub")
+            request.state.correo = payload.get("correo")
             request.state.rol = payload.get("rol")
 
             return await func(*args, **kwargs)

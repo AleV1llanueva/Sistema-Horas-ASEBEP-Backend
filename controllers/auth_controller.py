@@ -16,20 +16,22 @@ def login_controller(data: LoginInput, db: Session) -> TokenResponse:
     # 2. Buscar usuario por correo institucional
     usuario = db.query(Usuario).filter(
         Usuario.correo_institucional == data.correo).first()
-
-    # 3. Verificar que existe y que la contraseña es correcta
-    # — mismo mensaje para ambos casos, por seguridad
-    if not usuario or not verificar_password(data.password, usuario.password_hash):
-        raise HTTPException(
-            status_code=401,
-            detail="Credenciales inválidas"
-        )
-
-    # 4. Verificar que el usuario está activo \
+    
+    if not usuario:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    
+    # Verificar que está activo antes de la contraseña
     if not usuario.active:
         raise HTTPException(
             status_code=401,
-            detail="Usuario inactivo, contacte al administrador"
+            detail="Usuario inactivo, solicita tu PIN"
+        )
+
+    # Verificar que existe y que la contraseña es correcta
+    if not verificar_password(data.password, usuario.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Credenciales inválidas"
         )
 
     # 5. Obtener nombre del rol
