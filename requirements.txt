@@ -8,3 +8,8 @@ psycopg2-binary == 2.9.12
 
 #VALIDACIONES
 python-dotenv
+
+#AUTENTICACION
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.20
