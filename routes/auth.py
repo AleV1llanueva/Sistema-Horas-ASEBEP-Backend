@@ -15,7 +15,7 @@ from controllers.usuario import (
 router = APIRouter()
 
 @router.get("/usuario/{num_cuenta}", response_model=LoginResponse, tags=["Becario"])
-def login(num_cuenta: int, db: Session = Depends(get_db)):
+def login(num_cuenta: str, db: Session = Depends(get_db)):
     return user_controller(num_cuenta, db)
 
 

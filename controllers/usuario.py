@@ -86,7 +86,6 @@ def user_controller(num_cuenta: int, db: Session):
             correo_personal=usuario.correo_personal,
             correo_inst=usuario.correo_intitucional,
             carrera=carrera.nombre_carrera,
-            anio_nacimiento=usuario.anio_nacimiento,
             telefono=usuario.telefono
         ),
         datos_becario=DatosBecario(
