@@ -39,18 +39,18 @@ def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
 
     return meses_activos
 
-def user_controller(num_cuenta: int, db: Session):
+def user_controller(num_cuenta: str, db: Session):
     """
     Obtiene la información completa de un usuario becario. 
     Realiza consultas a las tablas: usuarios, perfiles_becarios, carreras, roles, estados_becas y pagos para construir el response 
     """
     #Buscar usuario por número de cuenta 
-    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == str(num_cuenta)).first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     #Buscar perfil de becario asociado al usuario
-    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    becario = db.query(Becario).filter(Becario.num_cuenta == str(num_cuenta)).first()
 
     #Buscar carrera, rol y estado de beca por sus IDs
     carrera = db.query(Carrera).filter(Carrera.id == usuario.carrera_id).first()
@@ -63,11 +63,15 @@ def user_controller(num_cuenta: int, db: Session):
     horas_faltantes = max(0, horas_esperadas - becario.horas_acumuladas)
 
     #Calcular pagos
-    pagos = db.query(Pago).filter(Pago.num_cuenta == num_cuenta).all()
-    meses_pagados = set()
-    for pago in pagos:
-        meses_pagados.add((pago.fecha_pago.year, pago.fecha_pago.month))
-    meses_sin_pagar = len([m for m in meses_activos if m not in meses_pagados])
+    pagos_esperados = len(meses_activos) * 20
+    meses_sin_pagar = max(0, pagos_esperados - becario.monto_acumulado)
+
+
+    # pagos = db.query(Pago).filter(Pago.num_cuenta == num_cuenta).all()
+    # meses_pagados = set()
+    # for pago in pagos:
+    #     meses_pagados.add((pago.fecha_pago.year, pago.fecha_pago.month))
+    # meses_sin_pagar = len([m for m in meses_activos if m not in meses_pagados])
 
     #Construir y retornar el response 
     return LoginResponse(
@@ -84,7 +88,7 @@ def user_controller(num_cuenta: int, db: Session):
             correo_personal=usuario.correo_personal,
             correo_inst=usuario.correo_intitucional,
             carrera=carrera.nombre_carrera,
-            anio_nacimiento=usuario.anio_nacimiento,
+            # anio_nacimiento=usuario.anio_nacimiento,
             telefono=usuario.telefono
         ),
         datos_becario=DatosBecario(

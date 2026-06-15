@@ -6,7 +6,7 @@ class Credenciales(BaseModel):
     active: bool
 
 class DatosPersonales(BaseModel):
-    num_cuenta: int
+    num_cuenta: str
     p_nombre: str
     s_nombre: Optional[str] = None
     p_apellido: str
@@ -14,7 +14,7 @@ class DatosPersonales(BaseModel):
     correo_personal: str
     correo_inst: str
     carrera: str
-    anio_nacimiento: int
+    # anio_nacimiento: int
     telefono: Optional[str] = None
 
 class DatosBecario(BaseModel):
