@@ -86,7 +86,7 @@ def user_controller(num_cuenta: str, db: Session):
             p_apellido=usuario.primer_apellido,
             s_apellido=usuario.segundo_apellido,
             correo_personal=usuario.correo_personal,
-            correo_inst=usuario.correo_intitucional,
+            correo_inst=usuario.correo_institucional,
             carrera=carrera.nombre_carrera,
             # anio_nacimiento=usuario.anio_nacimiento,
             telefono=usuario.telefono
