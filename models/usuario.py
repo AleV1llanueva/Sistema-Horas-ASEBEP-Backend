@@ -10,7 +10,7 @@ class Usuario(Base):
     primer_apellido = Column(String(20))
     segundo_apellido = Column(String(20))
     correo_personal = Column(String)
-    correo_intitucional = Column(String)
+    correo_institucional = Column(String)
     carrera_id = Column(Integer, ForeignKey("carreras.id"))
     telefono = Column(String(8))
     active = Column(Boolean)
