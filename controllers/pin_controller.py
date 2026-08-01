@@ -40,7 +40,7 @@ async def solicitar_pin_controller(data: SolicitarPinInput, db:Session):
     db.commit()
 
     from utils.mail import enviar_pin
-    await enviar_pin(data.correo, pin)
+    await enviar_pin(data.correo, pin, db)
 
     return {"mensaje": "Pin enviado a tu correo institucional"}
 

@@ -11,7 +11,7 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRES_HOURS = 1
-DOMINIO_PERMITIDO = os.getenv("DOMINIO_CORREO", "unah.edu.hn")
+DOMINIO_PERMITIDO = os.getenv("DOMINIO_CORREO", "unah.hn")
 
 
 ## CONTRASEÑAS
