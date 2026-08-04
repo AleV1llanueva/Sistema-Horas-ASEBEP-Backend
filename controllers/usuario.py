@@ -51,6 +51,8 @@ def user_controller(num_cuenta: int, db: Session):
 
     #Buscar perfil de becario asociado al usuario
     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if not becario:
+        raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
 
     #Buscar carrera, rol y estado de beca por sus IDs
     carrera = db.query(Carrera).filter(Carrera.id == usuario.carrera_id).first()
@@ -84,7 +86,6 @@ def user_controller(num_cuenta: int, db: Session):
             correo_personal=usuario.correo_personal,
             correo_inst=usuario.correo_intitucional,
             carrera=carrera.nombre_carrera,
-            anio_nacimiento=usuario.anio_nacimiento,
             telefono=usuario.telefono
         ),
         datos_becario=DatosBecario(

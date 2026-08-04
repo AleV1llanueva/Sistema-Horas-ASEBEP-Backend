@@ -1,6 +1,7 @@
 import utils.database
-
 from fastapi import FastAPI
+
+from models import pin_activacion
 
 from routes.auth import router as auth_routers
 

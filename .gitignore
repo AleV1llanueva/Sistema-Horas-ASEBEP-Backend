@@ -1,2 +1,8 @@
 .env
 docker-compose.yml
+alembic.ini
+alembic/__pycache__/
+alembic/versions/__pycache__/
+.venv/
+venv/
+ENV/
