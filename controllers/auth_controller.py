@@ -3,19 +3,13 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from models.usuario import Usuario
 from schemas.auth import LoginInput, TokenResponse
-from core.security import verificar_dominio, verificar_password, crear_token
+from core.security import verificar_password, crear_token
 
 def login_controller(data: LoginInput, db: Session) -> TokenResponse:
-    # 1. Validar dominio institucional
-    if not verificar_dominio(data.correo):
-        raise HTTPException(
-            status_code=400,
-            detail="Debe usar su correo institucional"
-        )
-
-    # 2. Buscar usuario por correo institucional
+    #Buscar usuario por numero de cuenta
     usuario = db.query(Usuario).filter(
-        Usuario.correo_institucional == data.correo).first()
+        Usuario.num_cuenta == data.num_cuenta
+        ).first()
     
     if not usuario:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")

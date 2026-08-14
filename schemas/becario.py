@@ -12,7 +12,7 @@ class DatosPersonales(BaseModel):
     p_apellido: str
     s_apellido: Optional[str] = None
     correo_personal: str
-    correo_inst: str
+    correo_institucional: str
     carrera: str
     telefono: Optional[str] = None
 

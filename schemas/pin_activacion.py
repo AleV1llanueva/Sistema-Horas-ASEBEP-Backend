@@ -2,10 +2,10 @@ from pydantic import BaseModel
 from pydantic import BaseModel, field_validator
 
 class SolicitarPinInput(BaseModel):
-    correo: str
+    num_cuenta: str
 
 class ActivarCuentaInput(BaseModel):
-    correo: str
+    num_cuenta: str
     pin: str
     nueva_password: str
 
