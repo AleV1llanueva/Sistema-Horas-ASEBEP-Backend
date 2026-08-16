@@ -4,4 +4,5 @@ from .estado_beca import EstadoBeca
 from .rol import Rol
 from .usuario import Usuario
 from .pin_activacion import PinActivacion
+from .pin_intentos import PinIntentos
 # from .pagos import Pago

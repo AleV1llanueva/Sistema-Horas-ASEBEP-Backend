@@ -46,7 +46,7 @@ def upgrade() -> None:
     sa.Column('primer_apellido', sa.String(length=20), nullable=True),
     sa.Column('segundo_apellido', sa.String(length=20), nullable=True),
     sa.Column('correo_personal', sa.String(), nullable=True),
-    sa.Column('correo_intitucional', sa.String(), nullable=True),
+    sa.Column('correo_institucional', sa.String(), nullable=True),
     sa.Column('carrera_id', sa.Integer(), nullable=True),
     sa.Column('telefono', sa.String(length=8), nullable=True),
     sa.Column('active', sa.Boolean(), nullable=True),

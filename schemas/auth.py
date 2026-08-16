@@ -4,14 +4,14 @@ class LoginInput(BaseModel):
     """
     Vallida la información que se manda al frontend
     """
-    correo: str
+    num_cuenta: str
     password: str
 
-    @field_validator("correo")
+    @field_validator("num_cuenta")
     @classmethod
-    def correo_no_vacio(cls, v):
+    def num_cuenta_no_vacio(cls, v):
         if not v or not v.strip():
-            raise ValueError("El correo no puede estar vacío")
+            raise ValueError("El número de cuenta no puede estar vacío")
         
         return v.lower().strip()
     
