@@ -11,7 +11,7 @@ class DatosPersonales(BaseModel):
     s_nombre: Optional[str] = None
     p_apellido: str
     s_apellido: Optional[str] = None
-    correo_personal: str
+    correo_personal: Optional[str] = None
     correo_institucional: str
     carrera: str
     telefono: Optional[str] = None
@@ -28,3 +28,4 @@ class LoginResponse(BaseModel):
     credenciales: Credenciales
     datos_personales: DatosPersonales
     datos_becario: DatosBecario
+

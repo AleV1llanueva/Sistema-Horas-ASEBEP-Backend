@@ -37,7 +37,7 @@ def login_controller(data: LoginInput, db: Session) -> TokenResponse:
         )
 
     # 6. Emitir token
-    token = crear_token(correo=usuario.correo_institucional, rol=rol)
+    token = crear_token(correo=usuario.correo_institucional, rol=rol, num_cuenta=usuario.num_cuenta)
 
     return TokenResponse(
         access_token=token,

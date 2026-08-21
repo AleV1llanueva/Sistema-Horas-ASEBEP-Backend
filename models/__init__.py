@@ -5,3 +5,7 @@ from .rol import Rol
 from .usuario import Usuario
 from .pin_activacion import PinActivacion
 from .pin_intentos import PinIntentos
+from .actividad import Actividad
+from .estado_actividad import EstadoActividad
+from .asistencia import Asistencia
+from .estado_asistencia import EstadoAsistencia

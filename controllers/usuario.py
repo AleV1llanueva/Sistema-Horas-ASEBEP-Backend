@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from datetime import date
-
 from sqlalchemy.orm import Session
+
 from models.usuario import Usuario
 from models.becario import Becario
 from models.carrera import Carrera
@@ -56,8 +56,13 @@ def user_controller(num_cuenta: int, db: Session):
 
     #Buscar carrera, rol y estado de beca por sus IDs
     carrera = db.query(Carrera).filter(Carrera.id == usuario.carrera_id).first()
+    carrera_nombre = carrera.nombre_carrera if carrera else "Sin carrera"
+
     rol = db.query(Rol).filter(Rol.id == usuario.rol_id).first()
+    rol_nombre = rol.nombre_rol if rol else "Sin rol"
+
     estado_beca = db.query(EstadoBeca).filter(EstadoBeca.id == becario.estado_beca_id).first()
+    estado_beca_nombre = estado_beca.nombre_estado if estado_beca else "Sin estado"
 
     #Calcular horas
     meses_activos = calcular_meses_activos(becario.mes_inicio, becario.anio_inicio)
@@ -74,7 +79,7 @@ def user_controller(num_cuenta: int, db: Session):
     #Construir y retornar el response 
     return LoginResponse(
         credenciales=Credenciales(
-            rol=rol.nombre_rol,
+            rol=rol_nombre,
             active=usuario.active
         ),
         datos_personales=DatosPersonales(
@@ -85,7 +90,7 @@ def user_controller(num_cuenta: int, db: Session):
             s_apellido=usuario.segundo_apellido,
             correo_personal=usuario.correo_personal,
             correo_institucional=usuario.correo_institucional,
-            carrera=carrera.nombre_carrera,
+            carrera=carrera_nombre,
             telefono=usuario.telefono
         ),
         datos_becario=DatosBecario(
@@ -94,6 +99,6 @@ def user_controller(num_cuenta: int, db: Session):
             horas_acumuladas=becario.horas_acumuladas,
             horas_faltantes=horas_faltantes,
             meses_sin_pagar=meses_sin_pagar,
-            estado_beca=estado_beca.nombre_estado
+            estado_beca=estado_beca_nombre
         )
     )
