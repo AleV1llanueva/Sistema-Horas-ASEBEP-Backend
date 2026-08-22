@@ -27,18 +27,20 @@ def verificar_password(plain: str, hashed: str) -> bool:
 
 ## JWT
 
-def crear_token(correo: str, rol: str) -> str: 
+def crear_token(correo: str, rol: str, num_cuenta: str) -> str: 
     payload = {
         "correo": correo,
         "rol": rol,
+        "num_cuenta": num_cuenta,
         "exp": datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRES_HOURS)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 def decodificar_token(token:str) -> dict:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithm=ALGORITHM)
-    except:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception as e:
+        print(f"Error decodificando token: {e}")
         raise HTTPException(status_code=401, detail= "Token inválido o expirado")
     
 ## VALIDACIONES 
@@ -73,6 +75,7 @@ def require_rol(*roles_permitidos):
             
             request.state.correo = payload.get("correo")
             request.state.rol = payload.get("rol")
+            request.state.num_cuenta = payload.get("num_cuenta")
 
             return await func(*args, **kwargs)
         return wrapper 
@@ -80,16 +83,16 @@ def require_rol(*roles_permitidos):
 
 
 def becario(func):
-    return require_rol("becario")(func)
+    return require_rol("Becario")(func)
 
-def solo_admin_horas(func):
-    return require_rol("admin_horas", "admin_general")(func)
+def admin_horas(func):
+    return require_rol("Admin Horas", "Admin General")(func)
 
-def solo_admin_aportaciones(func):
-    return require_rol("admin_aportaciones", "admin_general")(func)
+def admin_aportaciones(func):
+    return require_rol("Admin Aportaciones", "Admin General")(func)
 
-def solo_admin_general(func):
-    return require_rol("admin_general")(func)
+def admin_general(func):
+    return require_rol("Admin General")(func)
 
 def cualquier_usuario(func):
-    return require_rol("becario", "admin_horas", "admin_aportaciones", "admin_general")(func)
+    return require_rol("Becario", "Admin Horas", "Admin Aportaciones", "Admin General")(func)

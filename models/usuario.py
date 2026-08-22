@@ -16,5 +16,5 @@ class Usuario(Base):
     telefono = Column(String(8))
     active = Column(Boolean, default=False, nullable=False)
     rol_id = Column(Integer, ForeignKey("roles.id"))
-    password_hash = Column(String, nullable=False)
+    password_hash = Column(String, nullable=True)
     rol = relationship("Rol")
