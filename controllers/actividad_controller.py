@@ -16,11 +16,11 @@ def _cupos_disponibles(actividad_id:int, cupos_totales:int, db:Session) -> int:
 def crear_actividad_controller(data: CrearActividadInput, db: Session) -> ActividadResponse:
     #Obtener estado "programada" por defecto
     estado = db.query(EstadoActividad).filter(
-        EstadoActividad.nombre_estado == "programada"
+        EstadoActividad.nombre_estado == "Programada"
     ).first()
 
     if not estado:
-        raise HTTPException(status_code=500, detail="Estado 'programada' no encontrado en BD")
+        raise HTTPException(status_code=500, detail="Estado 'Programada' no encontrado en BD")
 
     #Crear actividad
     nueva_actividad = Actividad(
@@ -59,7 +59,7 @@ def ver_actividades_controller(db: Session):
 
     actividades = db.query(Actividad).join(EstadoActividad).filter(
         Actividad.fecha_actividad >= hoy,
-        EstadoActividad.nombre_estado == "programada"
+        EstadoActividad.nombre_estado == "Programada"
     ).all()
 
     return [

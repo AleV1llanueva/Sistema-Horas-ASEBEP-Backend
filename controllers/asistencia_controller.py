@@ -17,7 +17,7 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
     estado_actividad = db.query(EstadoActividad).filter(
         EstadoActividad.id == actividad.estado_actividad_id
     ).first()
-    if estado_actividad.nombre_estado != "programada":
+    if estado_actividad.nombre_estado != "Programada":
         raise HTTPException(status_code=400, detail="La actividad no está disponible para inscripción")
 
     # 3. Verificar que la actividad no haya pasado
@@ -41,8 +41,11 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
 
     # 6. Obtener estado "inscrito"
     estado = db.query(EstadoAsistencia).filter(
-        EstadoAsistencia.nombre_estado == "inscrito"
+        EstadoAsistencia.nombre_estado == "Inscrito"
     ).first()
+
+    if not estado:
+        raise HTTPException(status_code=500, detail="El estado 'Inscrito' no está configurado en la base de datos")
 
     # 7. Crear inscripción
     nueva_inscripcion = Asistencia(
