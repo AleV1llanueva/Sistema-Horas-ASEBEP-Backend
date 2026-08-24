@@ -5,6 +5,7 @@ from functools import wraps
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from jose import jwt, JWTError
+from enum import Enum
 
 load_dotenv()
 
@@ -13,6 +14,11 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRES_HOURS = 1
 DOMINIO_PERMITIDO = os.getenv("DOMINIO_CORREO", "unah.hn")
 
+class RolEnum(str, Enum):
+    BECARIO = "Becario"
+    ADMIN_GENERAL = "Admin General" 
+    ADMIN_APORTACIONES = "Admin Aportaciones"
+    ADMIN_HORAS = "Admin Horas"
 
 ## CONTRASEÑAS
 
@@ -83,16 +89,21 @@ def require_rol(*roles_permitidos):
 
 
 def becario(func):
-    return require_rol("Becario")(func)
+    return require_rol(RolEnum.BECARIO)(func)
 
 def admin_horas(func):
-    return require_rol("Admin Horas", "Admin General")(func)
+    return require_rol(RolEnum.ADMIN_HORAS, RolEnum.ADMIN_GENERAL)(func)
 
 def admin_aportaciones(func):
-    return require_rol("Admin Aportaciones", "Admin General")(func)
+    return require_rol(RolEnum.ADMIN_APORTACIONES, RolEnum.ADMIN_GENERAL)(func)
 
 def admin_general(func):
-    return require_rol("Admin General")(func)
+    return require_rol(RolEnum.ADMIN_GENERAL)(func)
 
 def cualquier_usuario(func):
-    return require_rol("Becario", "Admin Horas", "Admin Aportaciones", "Admin General")(func)
+    return require_rol(
+        RolEnum.BECARIO, 
+        RolEnum.ADMIN_HORAS, 
+        RolEnum.ADMIN_APORTACIONES, 
+        RolEnum.ADMIN_GENERAL
+    )(func)

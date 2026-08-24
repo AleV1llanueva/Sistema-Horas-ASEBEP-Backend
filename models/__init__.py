@@ -10,3 +10,4 @@ from .estado_actividad import EstadoActividad
 from .asistencia import Asistencia
 from .estado_asistencia import EstadoAsistencia
 from .pagos import Pago
+from .email_quota import EmailQuota

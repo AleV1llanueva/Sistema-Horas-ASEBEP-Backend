@@ -32,7 +32,7 @@ DATABASE_URL = os.getenv(
 )
 
 # Sobrescribimos la opción 'sqlalchemy.url' del archivo .ini dinámicamente
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace('%', '%%'))
 
 # Configurar el comportamiento del logging si el archivo ini existe
 if config.config_file_name is not None:
