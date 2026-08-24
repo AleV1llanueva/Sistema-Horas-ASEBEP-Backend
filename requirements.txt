@@ -5,6 +5,7 @@ uvicorn == 0.48.0
 #BASE DE DATOS
 sqlalchemy == 2.0.50
 psycopg2-binary == 2.9.12
+alembic == 1.18.5
 
 #VALIDACIONES
 python-dotenv
@@ -12,7 +13,9 @@ python-dotenv
 #AUTENTICACION
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.20#FRAMEWORK
+python-multipart==0.0.20
+
+#FRAMEWORK
 fastapi==0.136.1
 uvicorn==0.48.0
 

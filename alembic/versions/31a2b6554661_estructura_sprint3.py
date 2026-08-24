@@ -62,7 +62,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_pines_activacion_id'), 'pines_activacion', ['id'], unique=False)
     op.alter_column('roles', 'nombre_rol',
                existing_type=sa.VARCHAR(length=30),
-               type_=sa.String(length=15),
+               type_=sa.String(length=30),
                existing_nullable=True)
     op.create_index(op.f('ix_roles_id'), 'roles', ['id'], unique=False)
     op.alter_column('usuarios', 'primer_nombre',
@@ -113,7 +113,7 @@ def downgrade() -> None:
                nullable=True)
     op.drop_index(op.f('ix_roles_id'), table_name='roles')
     op.alter_column('roles', 'nombre_rol',
-               existing_type=sa.String(length=15),
+               existing_type=sa.String(length=30),
                type_=sa.VARCHAR(length=30),
                existing_nullable=True)
     op.drop_index(op.f('ix_pines_activacion_id'), table_name='pines_activacion')

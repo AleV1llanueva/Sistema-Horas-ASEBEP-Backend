@@ -103,7 +103,7 @@ def mis_inscripciones_controller(num_cuenta: str, db: Session):
         MisInscripcionesResponse(
             id=i.id,
             actividad_id=i.actividad_id,
-            titulo=i.actividad.titulo,
+            titulo=i.actividad.titulo if i.actividad else None,
             fecha_actividad=i.actividad.fecha_actividad,
             hora_inicio=i.actividad.hora_inicio,
             hora_final=i.actividad.hora_final,
