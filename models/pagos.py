@@ -1,11 +1,11 @@
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, BigInteger
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, String
 from utils.database import Base
 
 class Pago(Base):
     __tablename__ = "pagos"
 
     id = Column(Integer, primary_key=True, index=True)
-    num_cuenta = Column(BigInteger, ForeignKey("usuarios.num_cuenta"))
+    num_cuenta = Column(String(13), ForeignKey("usuarios.num_cuenta"))
     monto = Column(Integer)
     fecha_pago = Column(DateTime)
     # estado_pago_id = Column(Integer, ForeignKey("estados_pago.id"))
