@@ -14,8 +14,8 @@ app = FastAPI()
 origins = [
     "http://localhost:3000",        # Desarrollo local (React/Next.js/Vue)
     "http://localhost:5173",        # Desarrollo local (Vite)
-    "https://tudominio.com",        # Tu frontend en producción
-    "https://asebepunah.com/login",
+    "https://asebepunah.com",        # Tu frontend en producción
+    "https://www.asebepunah.com",
 ]
 
 app.add_middleware(
