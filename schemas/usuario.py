@@ -4,6 +4,8 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 from dotenv import load_dotenv
 
+from schemas.becario import PerfilBecarioResponse
+
 load_dotenv()
 
 DOMINIO_PERMITO = os.getenv("DOMINIO_CORREO", "unah.hn")
@@ -22,6 +24,8 @@ class CrearUsuario(BaseModel):
     telefono: str
     carrera_id: int
     rol_id: int
+    mes_inicio: int
+    anio_inicio: int
 
     @field_validator("num_cuenta")
     @classmethod
@@ -44,6 +48,21 @@ class CrearUsuario(BaseModel):
             raise ValueError("Este campo no puede estar vacío")
         return v.strip()
 
+    @field_validator("mes_inicio")
+    @classmethod
+    def validar_mes(cls, v):
+        if v < 1 or v > 12:
+            raise ValueError("El mes debe estar entre 1 y 12")
+        return v
+
+    @field_validator("anio_inicio")
+    @classmethod
+    def validar_anio(cls, v):
+        from datetime import date
+        if v < 2000 or v > date.today().year:
+            raise ValueError("El año de inicio no es válido")
+        return v
+
 class UsuarioResponse(BaseModel):
     """
         Define qué se le devuelve al admin después de crear el usuario exitosamente. 
@@ -54,3 +73,5 @@ class UsuarioResponse(BaseModel):
     correo_institucional: str
     rol_id: int
     active: bool 
+    perfil_becario: Optional[PerfilBecarioResponse] = None
+

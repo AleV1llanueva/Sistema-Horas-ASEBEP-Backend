@@ -107,3 +107,10 @@ def cualquier_usuario(func):
         RolEnum.ADMIN_APORTACIONES, 
         RolEnum.ADMIN_GENERAL
     )(func)
+
+def solo_administradores(func):
+    return require_rol(
+        RolEnum.ADMIN_HORAS, 
+        RolEnum.ADMIN_APORTACIONES, 
+        RolEnum.ADMIN_GENERAL
+    )(func)

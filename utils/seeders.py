@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from models.estado_asistencia import EstadoAsistencia
 from models.estado_actividad import EstadoActividad
 from models.rol import Rol
+from models.estado_beca import EstadoBeca
 
 def ejecutar_seeders(db: Session):
     print("Ejecutando seeders de datos iniciales...")
@@ -26,6 +27,13 @@ def ejecutar_seeders(db: Session):
         existe = db.query(Rol).filter(Rol.nombre_rol == nombre).first()
         if not existe:
             db.add(Rol(nombre_rol=nombre))
+
+    # 4. Estados de Beca
+    estados_beca = ["Activo", "Inactivo", "Suspendido", "Finalizado"]
+    for nombre in estados_beca:
+        existe = db.query(EstadoBeca).filter(EstadoBeca.nombre_estado == nombre).first()
+        if not existe:
+            db.add(EstadoBeca(nombre_estado=nombre))
 
     db.commit()
     print("Seeders ejecutados exitosamente.")
