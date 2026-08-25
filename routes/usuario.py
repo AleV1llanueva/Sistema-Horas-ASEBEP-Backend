@@ -12,7 +12,7 @@ from core.security import admin_general, cualquier_usuario, solo_administradores
 
 router = APIRouter()
 
-@router.get("/usuarios", response_model=list[BecarioGeneralResponse])
+@router.get("/usuarios", response_model=list[BecarioGeneralResponse], tags=["Usuarios"])
 @solo_administradores  # O el decorador que restrinja únicamente a administradores
 async def obtener_todos_los_becarios(request: Request, db: Session = Depends(get_db)):
     return obtener_todos_los_becarios_controller(db)
