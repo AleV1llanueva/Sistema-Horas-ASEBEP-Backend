@@ -4,7 +4,6 @@ from utils.database import get_db
 from schemas.becario import LoginResponse
 from schemas.auth import LoginInput, TokenResponse
 from schemas.pin_activacion import SolicitarPinInput, ActivarCuentaInput, MensajeResponse
-from controllers.usuario import user_controller
 from controllers.auth_controller import login_controller
 from controllers.pin_controller import (
     solicitar_pin_controller, 
@@ -13,16 +12,7 @@ from controllers.pin_controller import (
     cambiar_password_controller
 )
 
-from controllers.usuario import (
-    user_controller
-    )
-
 router = APIRouter()
-
-@router.get("/usuario/{num_cuenta}", response_model=LoginResponse, tags=["Becario"])
-def login(num_cuenta: str, db: Session = Depends(get_db)):
-    return user_controller(num_cuenta, db)
-
 
 #Login
 @router.post("/auth/login", response_model=TokenResponse, tags=["Autenticación"])

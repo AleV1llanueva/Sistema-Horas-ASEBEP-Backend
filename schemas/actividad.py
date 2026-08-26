@@ -42,16 +42,38 @@ class CrearActividadInput(BaseModel):
             raise ValueError("La fecha de la actividad no puede ser en el pasado")
         return v
 
+    @field_validator("hora_inicio", "hora_final", mode="before")
+    @classmethod
+    def validar_hora_formato(cls, v):
+        if isinstance(v, str):
+            partes = v.split(":")
+            if len(partes) >= 2:
+                hora = partes[0].zfill(2)
+                minutos = partes[1].zfill(2)
+                segundos = partes[2].zfill(2) if len(partes) > 2 else "00"
+                return f"{hora}:{minutos}:{segundos}"
+        return v
+
     @field_validator("hora_inicio")
     @classmethod
-    def validar_hora(cls, v, info):
+    def validar_hora_inicio(cls, v, info):
         fecha = info.data.get("fecha_actividad")
         if fecha:
-            from datetime import datetime
-            ahora = datetime.now()
-            inicio = datetime.combine(fecha, v)
+            from datetime import datetime, timezone
+            ahora = datetime.now(timezone.utc).replace(tzinfo=None)
+            # quitar timezone del time si lo tiene
+            v_sin_tz = v.replace(tzinfo=None) if hasattr(v, 'tzinfo') and v.tzinfo else v
+            inicio = datetime.combine(fecha, v_sin_tz)
             if inicio <= ahora:
                 raise ValueError("El horario de la actividad ya pasó")
+        return v
+
+    @field_validator("hora_final")
+    @classmethod
+    def validar_hora_final(cls, v, info):
+        hora_inicio = info.data.get("hora_inicio")
+        if hora_inicio and v <= hora_inicio:
+            raise ValueError("La hora final debe ser mayor a la hora inicial")
         return v
 
 

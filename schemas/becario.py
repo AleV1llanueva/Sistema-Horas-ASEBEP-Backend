@@ -29,3 +29,14 @@ class LoginResponse(BaseModel):
     datos_personales: DatosPersonales
     datos_becario: DatosBecario
 
+class PerfilBecarioResponse(BaseModel):
+    periodo_inicio: str
+    anio_inicio: int
+    mes_inicio: int
+    horas_acumuladas: int
+    monto_acumulado: int
+
+class BecarioGeneralResponse(BaseModel):
+    credenciales: Credenciales
+    datos_personales: DatosPersonales
+    datos_becario: DatosBecario
