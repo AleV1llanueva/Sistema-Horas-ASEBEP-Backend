@@ -12,6 +12,5 @@ class Asistencia(Base):
     check_out = Column(Boolean, default=False)
     estado_asistencia_id = Column(Integer, ForeignKey("estados_asistencia.id"))
     horas_registradas = Column(Integer, default=0)
-
     actividad = relationship("Actividad")
     estado = relationship("EstadoAsistencia")
