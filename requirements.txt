@@ -33,3 +33,6 @@ bcrypt==4.0.1
 
 #CORREO
 fastapi-mail==1.4.1
+
+#QR
+qrcode[pil]==8.2

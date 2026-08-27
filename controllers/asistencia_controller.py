@@ -1,3 +1,5 @@
+import os
+from jose import jwt
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -6,6 +8,11 @@ from models.actividad import Actividad
 from models.estado_asistencia import EstadoAsistencia
 from models.estado_actividad import EstadoActividad
 from schemas.asistencia import InscripcionInput, InscripcionResponse, MisInscripcionesResponse
+from utils.qr import generar_qr
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+QR_TTL_MIN = 10
 
 def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session):
     # 1. Verificar que la actividad existe
@@ -116,3 +123,169 @@ def mis_inscripciones_controller(num_cuenta: str, db: Session):
         )
         for i in inscripciones
     ]
+
+def _verificar_inscripcion(actividad_id: int, num_cuenta: str, db: Session) -> tuple:
+    """Retorna (actividad, inscripcion) o lanza HTTPException"""
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    inscripcion = db.query(Asistencia).filter(
+        Asistencia.actividad_id == actividad_id,
+        Asistencia.num_cuenta == num_cuenta
+    ).first()
+    if not inscripcion:
+        raise HTTPException(status_code=403, detail="No estás inscrito en esta actividad")
+
+    return actividad, inscripcion
+
+def _verificar_token_qr(token: str, tipo: str, db) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except:
+        raise HTTPException(status_code=400, detail="QR inválido o expirado")
+
+    if payload.get("tipo") != tipo:
+        raise HTTPException(status_code=400, detail="QR incorrecto")
+
+    actividad_id = payload.get("actividad_id")
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    token_guardado = actividad.token_entrada if tipo == "entrada" else actividad.token_salida
+
+    if not actividad or token_guardado != token:
+        raise HTTPException(status_code=400, detail="QR inválido")
+
+    return payload
+
+def _actualizar_estado(inscripcion, nombre_estado: str, db):
+    estado = db.query(EstadoAsistencia).filter(
+        EstadoAsistencia.nombre_estado == nombre_estado
+    ).first()
+    if estado:
+        inscripcion.estado_asistencia_id = estado.id
+
+
+def _sumar_horas(inscripcion, actividad, num_cuenta: str, db):
+    from models.becario import Becario
+    inscripcion.check_out = True
+    inscripcion.horas_registradas = actividad.horas_asignar
+    perfil = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if perfil:
+        perfil.horas_acumuladas += actividad.horas_asignar
+
+def generar_qr_entrada_controller(actividad_id: int, db) -> bytes:
+    #buscar actividad
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    #generar token JWT para el QR
+    token = jwt.encode(
+        {
+            "actividad_id": actividad_id,
+            "tipo": "entrada",
+            "exp": datetime.utcnow() + timedelta(minutes=QR_TTL_MIN)
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    #Guardar token en la actividad
+    actividad.token_entrada = token
+    db.commit()
+
+    return generar_qr(token, "entrada")
+
+def registrar_entrada_qr_controller(token: str, num_cuenta:str, db):
+    payload = _verificar_token_qr(token, "entrada", db)
+    actividad, inscripcion = _verificar_inscripcion(payload["actividad_id"], num_cuenta, db)
+
+    #Verificar que no haya registrado entrada ya 
+    if inscripcion.check_in:
+        raise HTTPException(status_code=400, detail="Ya registraste tu entrada")
+
+    inscripcion.check_in = True
+    _actualizar_estado(inscripcion, "Asistio", db)
+    db.commit()
+    return {"mensaje": "Entrada registrada exitosamente"}
+
+def generar_qr_salida_controller(actividad_id: int, db) -> bytes:
+    #buscar actividad
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    #generar token JWT para el QR
+    token = jwt.encode(
+        {
+            "actividad_id": actividad_id,
+            "tipo": "salida",
+            "exp": datetime.utcnow() + timedelta(minutes=QR_TTL_MIN)
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    #Guardar token en la actividad
+    actividad.token_salida = token
+    db.commit()
+
+    return generar_qr(token, "salida")
+
+def registrar_salida_qr_controller(token:str, num_cuenta: str, db):
+    payload = _verificar_token_qr(token, "salida", db)
+    actividad, inscripcion = _verificar_inscripcion(payload["actividad_id"], num_cuenta, db)
+
+    if not inscripcion.check_in:
+        raise HTTPException(status_code=400, detail="Debes registrar entrada primero")
+    if inscripcion.check_out:
+        raise HTTPException(status_code=400, detail="Ya registraste tu sallida")
+
+    _sumar_horas(inscripcion, actividad, num_cuenta, db)
+    db.commit()
+    return {"mensaje": "Salida registrada, horas acumuladas"}
+
+def registrar_entrada_manual_controller(actividad_id: int, num_cuenta: str, db: Session):
+    actividad, inscripcion = _verificar_inscripcion(actividad_id, num_cuenta, db)
+
+    if inscripcion.check_in:
+        raise HTTPException(status_code=400, detail="Ya se registró la entrada")
+
+    inscripcion.check_in = True
+    _actualizar_estado(inscripcion, "Asistió", db)
+    db.commit()
+    return {"mensaje": f"Entrada registrada para {num_cuenta}"}
+
+
+def registrar_salida_manual_controller(actividad_id: int, num_cuenta: str, db: Session):
+    actividad, inscripcion = _verificar_inscripcion(actividad_id, num_cuenta, db)
+
+    if not inscripcion.check_in:
+        raise HTTPException(status_code=400, detail="Debes registrar entrada primero")
+    if inscripcion.check_out:
+        raise HTTPException(status_code=400, detail="Ya se registró la salida")
+
+    _sumar_horas(inscripcion, actividad, num_cuenta, db)
+    db.commit()
+    return {"mensaje": f"Salida registrada para {num_cuenta}"}
+
+def ver_lista_asistencia_controller(actividad_id: int, db):
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    inscripciones = db.query(Asistencia).filter(
+        Asistencia.actividad_id == actividad_id
+    ).all()
+
+    return [
+        {
+            "num_cuenta": i.num_cuenta,
+            "check_in": i.check_in,
+            "check_out": i.check_out,
+            "horas_registradas": i.horas_registradas,
+            "estado": i.estado.nombre_estado
+        }
+        for i in inscripciones
+    ]
+

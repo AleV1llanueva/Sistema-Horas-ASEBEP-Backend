@@ -16,4 +16,6 @@ class Actividad(Base):
     hora_final = Column(Time)
     cupos = Column(Integer)
     estado_actividad_id = Column(Integer, ForeignKey("estados_actividad.id"))
+    token_entrada = Column(Text, nullable=True)
+    token_salida = Column(Text, nullable=True)
     estado = relationship("EstadoActividad")
