@@ -12,7 +12,7 @@ from utils.qr import generar_qr
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-QR_TTL_MIN = 10
+QR_TTL_MIN = 20
 
 def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session):
     # 1. Verificar que la actividad existe
@@ -155,6 +155,21 @@ def _verificar_token_qr(token: str, tipo: str, db) -> dict:
     if not actividad or token_guardado != token:
         raise HTTPException(status_code=400, detail="QR inválido")
 
+    ahora = datetime.now()
+
+    if tipo == "entrada":
+        referencia_tiempo = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
+        hora_mostrar = actividad.hora_inicio
+    else:
+        referencia_tiempo = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
+        hora_mostrar = actividad.hora_final
+
+    if ahora < referencia_tiempo:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El QR de {tipo} solo es válido a partir de las {hora_mostrar}"
+        )
+
     return payload
 
 def _actualizar_estado(inscripcion, nombre_estado: str, db):
@@ -179,12 +194,15 @@ def generar_qr_entrada_controller(actividad_id: int, db) -> bytes:
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
+    inicio = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
+    exp_time = inicio + timedelta(minutes=QR_TTL_MIN)
+
     #generar token JWT para el QR
     token = jwt.encode(
         {
             "actividad_id": actividad_id,
             "tipo": "entrada",
-            "exp": datetime.utcnow() + timedelta(minutes=QR_TTL_MIN)
+            "exp": int(exp_time.timestamp())
         },
         SECRET_KEY,
         algorithm=ALGORITHM
@@ -215,12 +233,15 @@ def generar_qr_salida_controller(actividad_id: int, db) -> bytes:
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
+    fin = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
+    exp_fin = fin + timedelta(minutes=QR_TTL_MIN)
+
     #generar token JWT para el QR
     token = jwt.encode(
         {
             "actividad_id": actividad_id,
             "tipo": "salida",
-            "exp": datetime.utcnow() + timedelta(minutes=QR_TTL_MIN)
+            "exp": int(exp_fin.timestamp())
         },
         SECRET_KEY,
         algorithm=ALGORITHM

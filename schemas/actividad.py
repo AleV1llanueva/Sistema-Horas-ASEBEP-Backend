@@ -60,7 +60,7 @@ class CrearActividadInput(BaseModel):
         fecha = info.data.get("fecha_actividad")
         if fecha:
             from datetime import datetime, timezone
-            ahora = datetime.now(timezone.utc).replace(tzinfo=None)
+            ahora = datetime.now()
             # quitar timezone del time si lo tiene
             v_sin_tz = v.replace(tzinfo=None) if hasattr(v, 'tzinfo') and v.tzinfo else v
             inicio = datetime.combine(fecha, v_sin_tz)
