@@ -12,7 +12,7 @@ from core.security import admin_aportaciones, becario, admin_general
 
 router = APIRouter()
 
-@router.post("/multas", response_model=MultaResponse, tags=["Multas"])
+@router.post("/multa", response_model=MultaResponse, tags=["Multas"])
 @admin_aportaciones
 async def registrar_multa(request: Request, data: RegistrarMultaInput, db: Session = Depends(get_db)):
     return registrar_multa_controller(data, db)

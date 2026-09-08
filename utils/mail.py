@@ -1,6 +1,6 @@
 import os 
+import resend
 from dotenv import load_dotenv
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from fastapi import HTTPException
 from datetime import date
 from models.email_quota import EmailQuota
@@ -8,17 +8,9 @@ from sqlalchemy.orm import Session
 
 load_dotenv()
 
-mail_config = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
-    MAIL_SERVER=os.getenv("MAIL_SERVER"),
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=False
-)
+resend.api_key = os.getenv("RESEND_API_KEY")
+FROM_EMAIL = os.getenv("FROM_EMAIL")
+
 
 def _html_pin(pin: str) -> str:
     return f"""
@@ -114,16 +106,24 @@ async def enviar_pin(correo: str, pin: str, db: Session):
             detail="Límite diario de correos alcanzado, intenta mañana"
         )
 
-    # armar y enviar correo
-    mensaje = MessageSchema(
-        subject="Activación de cuenta ASEBEP",
-        recipients=[correo],
-        body=_html_pin(pin),
-        subtype=MessageType.html
-    )
+    destinatario_final = correo
+    if FROM_EMAIL == "onboarding@resend.dev":
+        destinatario_final = "asebep.info2026@gmail.com"
 
-    fm = FastMail(mail_config)
-    await fm.send_message(mensaje)
+    params = {
+        "from": FROM_EMAIL,
+        "to": [destinatario_final],
+        "subject": "Activación de cuenta ASEBEP",
+        "html": _html_pin(pin)
+    }
+
+    try:
+        resend.Emails.send(params)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al enviar correo {str(e)}"
+        )
 
     # actualizar contador
     if quota:

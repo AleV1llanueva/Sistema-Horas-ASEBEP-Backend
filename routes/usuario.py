@@ -21,7 +21,7 @@ async def obtener_todos_los_becarios(request: Request, db: Session = Depends(get
 async def obtener_usuario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
     return user_controller(num_cuenta, request, db)
 
-@router.post("/usuarios", response_model=UsuarioResponse, tags=["Usuarios"])
+@router.post("/usuario", response_model=UsuarioResponse, tags=["Usuarios"])
 @admin_general
 async def crear_usuario(request: Request, data: CrearUsuario, db:Session = Depends(get_db)):
     return crear_usuario_controller(data, db)
