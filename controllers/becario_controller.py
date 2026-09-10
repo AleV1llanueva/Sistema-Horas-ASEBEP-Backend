@@ -8,6 +8,8 @@ from models.carrera import Carrera
 from models.rol import Rol
 from models.estado_beca import EstadoBeca
 from models.pagos import Pago
+from models.aportacion import Aportacion
+from models.estado_aportación import EstadoAportacion
 
 from schemas.becario import LoginResponse, Credenciales, DatosPersonales, DatosBecario, BecarioGeneralResponse
 
@@ -54,9 +56,18 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     horas_faltantes = max(0, horas_esperadas - becario.horas_acumuladas)
 
     # 3. Calcular pagos
-    pagos = db.query(Pago).filter(Pago.num_cuenta == usuario.num_cuenta).all()
-    meses_pagados = set((p.fecha_pago.year, p.fecha_pago.month) for p in pagos)
-    meses_sin_pagar = len([m for m in meses_activos if m not in meses_pagados])
+    estado_aprobado = db.query(EstadoAportacion).filter(EstadoAportacion.nombre_estado == "Aprobado").first()
+
+    total_meses_aprobados = 0
+    if estado_aprobado:
+        aportaciones_aprobadas = db.query(Aportacion).filter(
+            Aportacion.num_cuenta == usuario.num_cuenta,
+            Aportacion.estado_aportacion_id == estado_aprobado.id
+        ).all()
+
+        total_meses_aprobados = sum((a.meses_aprobados or 0) for a in aportaciones_aprobadas)
+        total_meses_activos = len(meses_activos)
+        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
 
     # 4. Retornar las estructuras listas
     credenciales = Credenciales(rol=rol_nombre, active=usuario.active)

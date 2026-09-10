@@ -21,7 +21,6 @@ class RegistrarMultaInput(BaseModel):
         if v <= 0:
             raise ValueError("El monto de la multa debe ser mayor a 0")
 
-    
 
 class MultaResponse(BaseModel):
     id: int

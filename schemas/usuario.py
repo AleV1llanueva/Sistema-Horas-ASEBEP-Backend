@@ -34,6 +34,15 @@ class CrearUsuario(BaseModel):
             raise ValueError("El número de cuenta debe tener exactamente 11 digitos")
         return v
 
+    @field_validator("telefono")
+    @classmethod
+    def validar_telefono(cls, v):
+        # Limpiar espacios o guiones si los trae
+        v_limpio = v.strip().replace("-", "").replace(" ", "")
+        if len(v_limpio) > 8:
+            raise ValueError("El número de teléfono no puede exceder los 8 dígitos")
+        return v_limpio
+
     @field_validator("correo_institucional")
     @classmethod
     def validar_correo(cls, v):
@@ -74,4 +83,27 @@ class UsuarioResponse(BaseModel):
     rol_id: int
     active: bool 
     perfil_becario: Optional[PerfilBecarioResponse] = None
+
+
+class ActualizarUsuarioInput(BaseModel):
+    primer_nombre: Optional[str] = None
+    segundo_nombre: Optional[str] = None
+    primer_apellido: Optional[str] = None
+    segundo_apellido: Optional[str] = None
+    correo_personal: Optional[str] = None
+    correo_institucional: Optional[str] = None
+    telefono: Optional[str] = None
+    carrera_id: Optional[int] = None
+    rol_id: Optional[int] = None
+
+    @field_validator("correo_institucional", mode="before")
+    @classmethod
+    def validar_correo(cls, v):
+        if not v or (isinstance(v, str)) and v.strip() == "":
+            return None
+        if not v.endswith(f"@{DOMINIO_PERMITO}"):
+            raise ValueError("El correo debe ser institucional @unah.hn")
+        return v.lower().strip()
+    
+    
 

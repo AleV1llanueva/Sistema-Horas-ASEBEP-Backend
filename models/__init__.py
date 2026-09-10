@@ -12,3 +12,6 @@ from .estado_asistencia import EstadoAsistencia
 from .pagos import Pago
 from .email_quota import EmailQuota
 from .multa import Multa
+from .aportacion import Aportacion
+from .estado_aportación import EstadoAportacion
+from .comprobantes_multa import ComprobanteMulta
