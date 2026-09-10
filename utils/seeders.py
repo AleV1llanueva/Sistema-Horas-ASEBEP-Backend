@@ -3,6 +3,7 @@ from models.estado_asistencia import EstadoAsistencia
 from models.estado_actividad import EstadoActividad
 from models.rol import Rol
 from models.estado_beca import EstadoBeca
+from models.estado_aportación import EstadoAportacion
 
 def ejecutar_seeders(db: Session):
     print("Ejecutando seeders de datos iniciales...")
@@ -34,6 +35,13 @@ def ejecutar_seeders(db: Session):
         existe = db.query(EstadoBeca).filter(EstadoBeca.nombre_estado == nombre).first()
         if not existe:
             db.add(EstadoBeca(nombre_estado=nombre))
+
+    # 5. Estados Aportacion
+    estados_aportacion = ["Pendiente", "Aprobado", "Rechazado"]
+    for nombre in estados_aportacion:
+        existe = db.query(EstadoAportacion).filter(EstadoAportacion.nombre_estado == nombre).first()
+        if not existe:
+            db.add(EstadoAportacion(nombre_estado=nombre))
 
     db.commit()
     print("Seeders ejecutados exitosamente.")

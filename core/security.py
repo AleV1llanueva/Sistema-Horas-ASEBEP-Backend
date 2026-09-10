@@ -1,5 +1,6 @@
 import os 
 import bcrypt
+import inspect
 from datetime import datetime, timedelta
 from functools import wraps
 from dotenv import load_dotenv
@@ -83,7 +84,10 @@ def require_rol(*roles_permitidos):
             request.state.rol = payload.get("rol")
             request.state.num_cuenta = payload.get("num_cuenta")
 
-            return await func(*args, **kwargs)
+            if inspect.iscoroutinefunction(func):
+                return await func(*args, **kwargs)
+            else:
+                return func(*args, **kwargs)
         return wrapper 
     return decorator
 

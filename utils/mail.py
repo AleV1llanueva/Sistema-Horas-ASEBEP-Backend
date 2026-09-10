@@ -106,13 +106,9 @@ async def enviar_pin(correo: str, pin: str, db: Session):
             detail="Límite diario de correos alcanzado, intenta mañana"
         )
 
-    destinatario_final = correo
-    if FROM_EMAIL == "onboarding@resend.dev":
-        destinatario_final = "asebep.info2026@gmail.com"
-
     params = {
         "from": FROM_EMAIL,
-        "to": [destinatario_final],
+        "to": [correo],
         "subject": "Activación de cuenta ASEBEP",
         "html": _html_pin(pin)
     }

@@ -34,6 +34,7 @@ async def activar_cuenta(data: ActivarCuentaInput, db: Session = Depends(get_db)
 async def solicitar_pin_cambio(data: SolicitarPinInput, db: Session = Depends(get_db)):
     return await solicitar_pin_cambio_controller(data, db)
 
+#Poner nueva contraseña
 @router.post("/auth/password/nueva", response_model=MensajeResponse, tags=["Autenticación"])
 async def cambiar_password(data: ActivarCuentaInput, db: Session = Depends(get_db)):
     return await cambiar_password_controller(data, db)

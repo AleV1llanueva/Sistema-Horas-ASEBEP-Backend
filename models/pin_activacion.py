@@ -6,7 +6,7 @@ class PinActivacion(Base):
     __tablename__ = "pines_activacion"
 
     id = Column(Integer, primary_key= True, index=True)
-    correo = Column(String, ForeignKey("usuarios.correo_institucional"), nullable=False)
+    correo = Column(String, ForeignKey("usuarios.correo_institucional", onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     pin_hash = Column(String, nullable= False)
     expira_en = Column(DateTime, nullable=False)
     creado_en = Column(DateTime, default=datetime.utcnow)

@@ -28,7 +28,7 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
         raise HTTPException(status_code=400, detail="La actividad no está disponible para inscripción")
 
     # 3. Verificar que la actividad no haya pasado
-    if actividad.fecha_actividad < datetime.utcnow().date():
+    if actividad.fecha_actividad < datetime.now().date():
         raise HTTPException(status_code=400, detail="La actividad ya pasó")
 
     # 4. Verificar que haya cupos disponibles
@@ -88,7 +88,7 @@ def cancelar_inscripcion_controller(actividad_id: int, num_cuenta: str, db: Sess
 
     # 2. Verificar que la actividad no haya comenzado
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
-    ahora = datetime.utcnow()
+    ahora = datetime.now()
     inicio_actividad = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
 
     if ahora >= inicio_actividad - timedelta(hours=2):

@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from models.usuario import Usuario 
 from models.becario import Becario
 from models.rol import Rol
@@ -74,7 +75,7 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al registrar el usuario y su perfil: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al registrar el usuario y su perfil")
 
     return UsuarioResponse(
         num_cuenta=str(nuevo_usuario.num_cuenta),
@@ -91,3 +92,49 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
             monto_acumulado=nuevo_perfil_becario.monto_acumulado
         )
     )
+
+def actualizar_usuario_por_admin_controller(num_cuenta: str, data, db: Session):
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    try:
+        # Actualizamos los campos si vienen incluidos en la petición
+        if data.primer_nombre is not None:
+            usuario.primer_nombre = data.primer_nombre
+        if data.segundo_nombre is not None:
+            usuario.segundo_nombre = data.segundo_nombre
+        if data.primer_apellido is not None:
+            usuario.primer_apellido = data.primer_apellido
+        if data.segundo_apellido is not None:
+            usuario.segundo_apellido = data.segundo_apellido
+        if data.correo_personal is not None:
+            usuario.correo_personal = data.correo_personal
+        if data.correo_institucional is not None and data.correo_institucional != usuario.correo_institucional:
+            correo_existente = db.query(Usuario).filter(
+                Usuario.correo_institucional == data.correo_institucional,
+                Usuario.num_cuenta != num_cuenta
+            ).first()
+            if correo_existente:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="El correo institucional ya está registrado por otro usuario"
+                )
+            usuario.correo_institucional = data.correo_institucional
+        if data.telefono is not None:
+            usuario.telefono = data.telefono
+        if data.carrera_id is not None:
+            usuario.carrera_id = data.carrera_id
+        if data.rol_id is not None:
+            usuario.rol_id = data.rol_id
+
+        db.commit()
+        db.refresh(usuario)
+        return {"mensaje": f"Usuario con número de cuenta {num_cuenta} actualizado exitosamente"}
+    except IntegrityError as e:
+        db.rollback()
+        print(f"Error de integridad detallado: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail="Error de integridad en la base de datos"
+        )
