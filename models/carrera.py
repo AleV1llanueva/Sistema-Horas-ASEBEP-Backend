@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean
 from utils.database import Base
 
 class Carrera(Base):
@@ -6,3 +6,4 @@ class Carrera(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nombre_carrera = Column(String)
+    activo = Column(Boolean, default=True, nullable=False)

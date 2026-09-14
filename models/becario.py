@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, BigInteger
+from sqlalchemy import Column, Integer, String, Date, ForeignKey
+from sqlalchemy.orm import relationship
 from utils.database import Base
 
 class Becario(Base):
@@ -13,3 +14,5 @@ class Becario(Base):
     estado_beca_id = Column(Integer, ForeignKey("estados_beca.id"))
     fecha_fin_beca = Column(Date, nullable=True)
     monto_acumulado = Column(Integer)
+    estado = relationship("EstadoBeca")
+

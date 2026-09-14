@@ -7,7 +7,7 @@ from models.rol import Rol
 from models.carrera import Carrera
 from schemas.usuario import CrearUsuario, UsuarioResponse
 from schemas.becario import PerfilBecarioResponse
-
+from controllers.becario_controller import obtener_estado_beca_id
 
 def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse:
     #Verificar que el rol existe
@@ -66,7 +66,7 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
             mes_inicio = data.mes_inicio,
             horas_acumuladas = 0,
             monto_acumulado = 0,
-            estado_beca_id = 1
+            estado_beca_id = obtener_estado_beca_id("Activo", db)
         )
         db.add(nuevo_perfil_becario)
 

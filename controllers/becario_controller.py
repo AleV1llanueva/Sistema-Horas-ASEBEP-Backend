@@ -1,17 +1,25 @@
 from fastapi import HTTPException, Request
 from datetime import date
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from models.usuario import Usuario
 from models.becario import Becario
 from models.carrera import Carrera
 from models.rol import Rol
 from models.estado_beca import EstadoBeca
-from models.pagos import Pago
 from models.aportacion import Aportacion
 from models.estado_aportación import EstadoAportacion
+from models.asistencia import Asistencia
 
-from schemas.becario import LoginResponse, Credenciales, DatosPersonales, DatosBecario, BecarioGeneralResponse
+from schemas.becario import (LoginResponse, 
+                             Credenciales, 
+                             DatosPersonales, 
+                             DatosBecario, 
+                             BecarioGeneralResponse, 
+                             AdminInfoResponse,
+                             BecarioUpdateInput
+)
 
 def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
     fecha_actual = date.today()
@@ -36,6 +44,24 @@ def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
 
     return meses_activos
 
+def calcular_horas_totales(num_cuenta: str, db: Session) -> int:
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    horas_base = becario.horas_acumuladas if becario else 0
+
+    horas_actividades = db.query(func.sum(Asistencia.horas_registradas)).filter(
+        Asistencia.num_cuenta == num_cuenta
+    ).scalar() or 0
+
+    return horas_base + horas_actividades
+
+def calcular_periodo_pac(mes_inicio: int) -> str:
+    if mes_inicio <= 5:
+        return "I-PAC"
+    elif mes_inicio <= 8:
+        return "II-PAC"
+    else:
+        return "III-PAC"
+
 # --- HELPER PRIVADO PARA EVITAR CÓDIGO REPETIDO ---
 def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     """Construye y calcula los datos completos de un becario (horas, pagos, relaciones)."""
@@ -53,6 +79,7 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     # 2. Calcular horas
     meses_activos = calcular_meses_activos(becario.mes_inicio, becario.anio_inicio)
     horas_esperadas = len(meses_activos) * 20
+    horas_totales = calcular_horas_totales(becario.num_cuenta, db)
     horas_faltantes = max(0, horas_esperadas - becario.horas_acumuladas)
 
     # 3. Calcular pagos
@@ -85,7 +112,7 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     datos_becario = DatosBecario(
         periodo_inicio=becario.periodo_inicio,
         anio_inicio=becario.anio_inicio,
-        horas_acumuladas=becario.horas_acumuladas,
+        horas_totales=horas_totales,
         horas_faltantes=horas_faltantes,
         meses_sin_pagar=meses_sin_pagar,
         estado_beca=estado_beca_nombre
@@ -145,3 +172,118 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
         )
 
     return resultado_general
+
+def usuario_me_controller(request: Request, db: Session):
+    num_cuenta_actual = getattr(request.state, "num_cuenta", None)
+    rol_actual = getattr(request.state, "rol", None)
+
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta_actual).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if rol_actual == "Becario":
+        becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta_actual).first()
+        if not becario:
+            raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
+
+        credenciales, datos_personales, datos_becario = _construir_detalle_becario(usuario, becario, db)
+        return LoginResponse(
+            credenciales=credenciales,
+            datos_personales=datos_personales,
+            datos_becario=datos_becario
+        )
+
+    # Es admin (Admin General, Admin Aportaciones, o Admin Horas)
+    return AdminInfoResponse(
+        num_cuenta=usuario.num_cuenta,
+        primer_nombre=usuario.primer_nombre,
+        segundo_nombre=usuario.segundo_nombre,
+        primer_apellido=usuario.primer_apellido,
+        segundo_apellido=usuario.segundo_apellido,
+        correo_institucional=usuario.correo_institucional,
+        rol=rol_actual
+    )
+
+def obtener_estado_beca_id(nombre_estado: str, db: Session) -> int:
+    estado = db.query(EstadoBeca).filter(EstadoBeca.nombre_estado == nombre_estado).first()
+    if not estado:
+        raise HTTPException(status_code=500, detail=f"Estado de beca '{nombre_estado}' no configurado")
+    return estado.id
+
+
+def verificar_y_finalizar_por_fecha(becario: Becario, db: Session):
+    if becario.fecha_fin_beca and becario.fecha_fin_beca <= date.today():
+        estado_actual = becario.estado.nombre_estado if becario.estado else None
+        if estado_actual != "Finalizado":
+            becario.estado_beca_id = obtener_estado_beca_id("Finalizado", db)
+            db.commit()
+            db.refresh(becario)
+
+def desactivar_becario_controller(num_cuenta: str, db: Session):
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if not becario:
+        raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
+
+    estado_actual = becario.estado.nombre_estado if becario.estado else None
+    if estado_actual == "Inactivo":
+        raise HTTPException(status_code=400, detail="El becario ya está inactivo")
+
+    becario.estado_beca_id = obtener_estado_beca_id("Inactivo", db)
+    db.commit()
+    return {"mensaje": "Becario desactivado exitosamente"}
+
+
+def reactivar_becario_controller(num_cuenta: str, db: Session):
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if not becario:
+        raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
+
+    estado_actual = becario.estado.nombre_estado if becario.estado else None
+    if estado_actual == "Activo":
+        raise HTTPException(status_code=400, detail="El becario ya está activo")
+
+    becario.estado_beca_id = obtener_estado_beca_id("Activo", db)
+    db.commit()
+    return {"mensaje": "Becario reactivado exitosamente"}
+
+def actualizar_becario_controller(num_cuenta: str, datos: BecarioUpdateInput, db: Session):
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if not becario:
+        raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
+
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if datos.estado_beca_id is not None:
+        estado = db.query(EstadoBeca).filter(EstadoBeca.id == datos.estado_beca_id).first()
+        if not estado:
+            raise HTTPException(status_code=404, detail="Estado de beca no encontrado")
+        becario.estado_beca_id = datos.estado_beca_id
+
+    if datos.anio_inicio is not None:
+        becario.anio_inicio = datos.anio_inicio
+
+    if datos.mes_inicio is not None:
+        becario.mes_inicio = datos.mes_inicio
+        becario.periodo_inicio = calcular_periodo_pac(datos.mes_inicio)
+
+    if datos.horas_acumuladas is not None:
+        becario.horas_acumuladas = datos.horas_acumuladas
+    if datos.monto_acumulado is not None:
+        becario.monto_acumulado = datos.monto_acumulado
+
+    if datos.fecha_fin_beca is not None:
+        becario.fecha_fin_beca = datos.fecha_fin_beca
+
+        estado_actual = becario.estado.nombre_estado if becario.estado else None
+        if datos.fecha_fin_beca >= date.today() and estado_actual == "Finalizado":
+            becario.estado_beca_id = obtener_estado_beca_id("Activo", db)
+
+    db.commit()
+    db.refresh(becario)
+
+    verificar_y_finalizar_por_fecha(becario, db)
+
+    _, _, datos_becario = _construir_detalle_becario(usuario, becario, db)
+    return datos_becario

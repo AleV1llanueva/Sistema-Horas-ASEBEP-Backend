@@ -100,7 +100,7 @@ async def enviar_pin(correo: str, pin: str, db: Session):
     hoy = date.today()
     quota = db.query(EmailQuota).filter(EmailQuota.fecha == hoy).first()
 
-    if quota and quota.correos_enviados >= 490:
+    if quota and quota.correos_enviados >= 95:
         raise HTTPException(
             status_code=429,
             detail="Límite diario de correos alcanzado, intenta mañana"

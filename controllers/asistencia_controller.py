@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from models.asistencia import Asistencia
 from models.actividad import Actividad
+from models.becario import Becario
 from models.estado_asistencia import EstadoAsistencia
 from models.estado_actividad import EstadoActividad
 from schemas.asistencia import InscripcionInput, InscripcionResponse, MisInscripcionesResponse
@@ -180,13 +181,9 @@ def _actualizar_estado(inscripcion, nombre_estado: str, db):
         inscripcion.estado_asistencia_id = estado.id
 
 
-def _sumar_horas(inscripcion, actividad, num_cuenta: str, db):
-    from models.becario import Becario
+def _sumar_horas(inscripcion, actividad, num_cuenta:str, db):
     inscripcion.check_out = True
     inscripcion.horas_registradas = actividad.horas_asignar
-    perfil = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
-    if perfil:
-        perfil.horas_acumuladas += actividad.horas_asignar
 
 def generar_qr_entrada_controller(actividad_id: int, db) -> bytes:
     #buscar actividad

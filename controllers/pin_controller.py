@@ -17,11 +17,11 @@ def _generar_pin() -> str:
     return str(random.randint(100000, 999999))
 
 
-async def _solicitar_pin(usuario, db:Session, mensaje_exito:str):
+async def _solicitar_pin(usuario, db: Session, mensaje_exito: str):
     """
     Función privada para enviar PIN
     """
-    #verificar límite de correos por usuario
+    # verificar límite de correos por usuario
     hoy = date.today()
     intento = db.query(PinIntentos).filter(
         PinIntentos.correo == usuario.correo_institucional,
@@ -31,22 +31,30 @@ async def _solicitar_pin(usuario, db:Session, mensaje_exito:str):
     if intento and intento.intentos >= LIMITE_PINES_POR_USUARIO:
         raise HTTPException(status_code=429, detail="Límite de PINs diarios alcanzados, intenta mañana nuevamente")
 
-    #Si existe un pin anterior eliminarlo
+    # Si existe un pin anterior eliminarlo
     db.query(PinActivacion).filter(
         PinActivacion.correo == usuario.correo_institucional
     ).delete()
 
-    #Generar PIN y hashearlo
+    # Generar PIN y hashearlo
     pin = _generar_pin()
     pin_hash = hashear_password(pin)
 
     db.add(PinActivacion(
-        correo = usuario.correo_institucional,
-        pin_hash = pin_hash,
-        expira_en = datetime.utcnow() + timedelta(minutes=15)
+        correo=usuario.correo_institucional,
+        pin_hash=pin_hash,
+        expira_en=datetime.utcnow() + timedelta(minutes=15)
     ))
+    db.commit()
 
-    #Actualizar los intentos del usuario 
+    # Enviar Correo — si falla, no se incrementa el contador
+    try:
+        await enviar_pin(usuario.correo_institucional, pin, db)
+    except Exception as e:
+        db.rollback()
+        raise 
+
+    # Solo si el correo se envió bien, actualizar los intentos del usuario
     if intento:
         intento.intentos += 1
         es_ultimo = intento.intentos >= LIMITE_PINES_POR_USUARIO
@@ -56,10 +64,7 @@ async def _solicitar_pin(usuario, db:Session, mensaje_exito:str):
 
     db.commit()
 
-    #Enviar Correo
-    await enviar_pin(usuario.correo_institucional, pin, db)
-
-    #Avisar si es el ultimo intento
+    # Avisar si es el ultimo intento
     if es_ultimo:
         return {"mensaje": "PIN enviado. Este es tu último PIN disponible hoy, úsalo antes de que expire"}
     return {"mensaje": "Pin enviado a tu correo institucional"}
