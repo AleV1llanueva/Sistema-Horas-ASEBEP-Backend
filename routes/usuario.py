@@ -3,11 +3,18 @@ from sqlalchemy.orm import Session
 from utils.database import get_db
 
 from schemas.usuario import CrearUsuario, UsuarioResponse, ActualizarUsuarioInput
-from schemas.becario import LoginResponse, BecarioGeneralResponse
+from schemas.becario import LoginResponse, BecarioGeneralResponse, BecarioUpdateInput, DatosBecario
 
 from controllers.usuario_controller import crear_usuario_controller, actualizar_usuario_por_admin_controller
-from controllers.becario_controller import user_controller, obtener_todos_los_becarios_controller
-from core.security import admin_general, becario, solo_administradores, admin_general
+from controllers.becario_controller import (
+    user_controller, 
+    obtener_todos_los_becarios_controller, 
+    usuario_me_controller,
+    desactivar_becario_controller,
+    reactivar_becario_controller,
+    actualizar_becario_controller
+)
+from core.security import admin_general, becario, solo_administradores, admin_general, cualquier_usuario
 
 router = APIRouter()
 
@@ -17,9 +24,15 @@ router = APIRouter()
 def obtener_todos_los_becarios(request: Request, db: Session = Depends(get_db)):
     return obtener_todos_los_becarios_controller(db)
 
+#Ver perfil becario propio
+@router.get("/usuarios/me", tags=["Usuarios"])
+@cualquier_usuario
+def obtener_mi_info(request: Request, db: Session = Depends(get_db)):
+    return usuario_me_controller(request, db)
+
 #Ver perfil becario de un usuario especifico 
 @router.get("/usuarios/{num_cuenta}", response_model=LoginResponse, tags=["Usuarios"])
-@becario
+@admin_general
 def obtener_usuario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
     return user_controller(num_cuenta, request, db)
 
@@ -39,3 +52,22 @@ def actualizar_usuario_admin(
     db: Session = Depends(get_db)
 ):
     return actualizar_usuario_por_admin_controller(num_cuenta, data, db)
+
+# Desactivar becario
+@router.delete("/becarios/{num_cuenta}", tags=["Becarios"])
+@admin_general
+def desactivar_becario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
+    return desactivar_becario_controller(num_cuenta, db)
+
+
+# Reactivar becario
+@router.patch("/becarios/{num_cuenta}", tags=["Becarios"])
+@admin_general
+def reactivar_becario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
+    return reactivar_becario_controller(num_cuenta, db)
+
+#Editar perfil becario 
+@router.put("/becarios/{num_cuenta}", response_model=DatosBecario, tags=["Becarios"])
+@admin_general
+def actualizar_becario(request: Request, num_cuenta: str, datos: BecarioUpdateInput, db: Session = Depends(get_db)):
+    return actualizar_becario_controller(num_cuenta, datos, db)

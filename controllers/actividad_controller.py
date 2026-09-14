@@ -16,12 +16,15 @@ def _cupos_disponibles(actividad_id:int, cupos_totales:int, db:Session) -> int:
 from datetime import datetime
 
 def _calcular_estado_dinamico(actividad) -> str:
+    estado_guardado = actividad.estado.nombre_estado if actividad.estado else None
+
+    if estado_guardado == "Cancelada":
+        return "Cancelada"
+
     ahora = datetime.now()
-    
-    # Combinar fecha y hora de la actividad para crear objetos datetime exactos
     inicio_dt = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
     fin_dt = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
-    
+
     if ahora < inicio_dt:
         return "Programada"
     elif inicio_dt <= ahora <= fin_dt:
@@ -76,7 +79,6 @@ def ver_actividades_controller(db: Session):
 
     actividades = db.query(Actividad).join(EstadoActividad).filter(
         Actividad.fecha_actividad >= hoy,
-        EstadoActividad.nombre_estado == "Programada"
     ).all()
 
     return [
@@ -139,22 +141,46 @@ def editar_actividad_controller(actividad_id: int, data: CrearActividadInput, db
         estado=actividad.estado.nombre_estado if actividad.estado else "Programada"
     )
 
-def eliminar_actividad_controller(actividad_id: int, db: Session):
-    # 1. Buscar la actividad
+def obtener_estado_actividad_id(nombre_estado: str, db: Session) -> int:
+    estado = db.query(EstadoActividad).filter(EstadoActividad.nombre_estado == nombre_estado).first()
+    if not estado:
+        raise HTTPException(status_code=500, detail=f"Estado de actividad '{nombre_estado}' no configurado")
+    return estado.id
+
+def cancelar_actividad_controller(actividad_id: int, db: Session):
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    # 2. Validar que la actividad sea en el futuro (antes del evento o el mismo día)
-    hoy = date.today()
-    if actividad.fecha_actividad < hoy:
+    if actividad.fecha_actividad < date.today():
         raise HTTPException(
-            status_code=400, 
-            detail="No se puede eliminar una actividad cuya fecha ya pasó"
+            status_code=400,
+            detail="No se puede cancelar una actividad cuya fecha ya pasó"
         )
 
-    # 3. Eliminar la actividad
-    db.delete(actividad)
-    db.commit()
-    return {"mensaje": "Actividad eliminada exitosamente"}
+    estado_actual = actividad.estado.nombre_estado if actividad.estado else None
+    if estado_actual == "Cancelada":
+        raise HTTPException(status_code=400, detail="La actividad ya está cancelada")
 
+    actividad.estado_actividad_id = obtener_estado_actividad_id("Cancelada", db)
+    db.commit()
+    return {"mensaje": "Actividad cancelada exitosamente"}
+
+def reactivar_actividad_controller(actividad_id: int, db: Session):
+    actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    if actividad.fecha_actividad < date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede reactivar una actividad cuya fecha ya pasó"
+        )
+
+    estado_actual = actividad.estado.nombre_estado if actividad.estado else None
+    if estado_actual != "Cancelada":
+        raise HTTPException(status_code=400, detail="La actividad no está cancelada")
+
+    actividad.estado_actividad_id = obtener_estado_actividad_id("Programada", db)
+    db.commit()
+    return {"mensaje": "Actividad reactivada exitosamente"}

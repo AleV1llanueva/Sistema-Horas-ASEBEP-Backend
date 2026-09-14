@@ -8,7 +8,8 @@ from controllers.actividad_controller import (
     crear_actividad_controller, 
     ver_actividades_controller, 
     editar_actividad_controller,
-    eliminar_actividad_controller
+    cancelar_actividad_controller,
+    reactivar_actividad_controller
 )
 from core.security import admin_horas, cualquier_usuario
 
@@ -37,14 +38,16 @@ def editar_actividad(
 ):
     return editar_actividad_controller(actividad_id, data, db)
 
-#Eliminar Actividad
+#Desactivar Actividad
 @router.delete("/actividades/{actividad_id}", tags=["Actividades"])
 @admin_horas
-def eliminar_actividad(
-    request: Request,
-    actividad_id: int,
-    db: Session = Depends(get_db)
-):
-    return eliminar_actividad_controller(actividad_id, db)
+def cancelar_actividad(request: Request, actividad_id: int, db: Session = Depends(get_db)):
+    return cancelar_actividad_controller(actividad_id, db)
+
+#Reactivar
+@router.patch("/actividades/{actividad_id}", tags=["Actividades"])
+@admin_horas
+def reactivar_actividad(request: Request, actividad_id: int, db: Session = Depends(get_db)):
+    return reactivar_actividad_controller(actividad_id, db)
 
 

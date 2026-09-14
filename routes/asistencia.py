@@ -40,6 +40,11 @@ def mis_inscripciones(request: Request, db: Session = Depends(get_db)):
     num_cuenta = request.state.num_cuenta
     return mis_inscripciones_controller(num_cuenta, db)
 
+@router.get("/asistencias/usuarios/{num_cuenta}", response_model=list[MisInscripcionesResponse], tags=["Asistencias"])
+@admin_horas
+def ver_inscripciones_de_usuario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
+    return mis_inscripciones_controller(num_cuenta, db)
+
 #QR entrada para asistencia
 @router.post("/asistencias/entrada/actividades/{actividad_id}", tags=["Asistencias"])
 @admin_horas

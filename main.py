@@ -7,6 +7,8 @@ from routes.actividad import router as actividad_router
 from routes.asistencia import router as asistencia_router 
 from routes.multa import router as multa_router
 from routes.aportacion import router as aportacion_router
+from routes.carrera import router as carrera_router
+from routes.rol import router as rol_router
 from utils.database import SessionLocal
 from utils.seeders import ejecutar_seeders
 
@@ -59,3 +61,5 @@ app.include_router(actividad_router)
 app.include_router(asistencia_router)
 app.include_router(multa_router)
 app.include_router(aportacion_router)
+app.include_router(carrera_router)
+app.include_router(rol_router)
