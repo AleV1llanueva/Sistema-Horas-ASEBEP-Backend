@@ -1,9 +1,51 @@
-.env
-docker-compose.yml
-alembic.ini
-alembic/__pycache__/
-alembic/versions/__pycache__/
+
+
+# Python compilado
+__pycache__/
+*.py[cod]
+*.so
+
+# Entornos virtuales
 .venv/
 venv/
-ENV/
+env/
+
+# Variables de entorno (secretos)
+.env
+.env.*
+!.env.example
+
+# Base de datos local
+*.db
+*.sqlite3
+
+# Empaquetado
+build/
+dist/
+*.egg-info/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Caché de herramientas
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+logs/
+
+# Archivos subidos o generados en runtime
 uploads/
+
+# Editores
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.sw?
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
