@@ -8,12 +8,21 @@ from models.actividad import Actividad
 from models.becario import Becario
 from models.estado_asistencia import EstadoAsistencia
 from models.estado_actividad import EstadoActividad
-from schemas.asistencia import InscripcionInput, InscripcionResponse, MisInscripcionesResponse
+from schemas.asistencia import (
+    InscripcionInput,
+    InscripcionResponse,
+    MisInscripcionesResponse,
+)
 from utils.qr import generar_qr
+
+
+from datetime import date, time, datetime
+from zoneinfo import ZoneInfo
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 QR_TTL_MIN = 20
+
 
 def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session):
     # 1. Verificar que la actividad existe
@@ -22,38 +31,55 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
     # 2. Verificar que la actividad está programada
-    estado_actividad = db.query(EstadoActividad).filter(
-        EstadoActividad.id == actividad.estado_actividad_id
-    ).first()
+    estado_actividad = (
+        db.query(EstadoActividad)
+        .filter(EstadoActividad.id == actividad.estado_actividad_id)
+        .first()
+    )
     if estado_actividad.nombre_estado != "Programada":
-        raise HTTPException(status_code=400, detail="La actividad no está disponible para inscripción")
+        raise HTTPException(
+            status_code=400, detail="La actividad no está disponible para inscripción"
+        )
 
     # 3. Verificar que la actividad no haya pasado
-    if actividad.fecha_actividad < datetime.now().date():
+    if actividad.fecha_actividad < datetime.now(ZoneInfo("America/Tegucigalpa")).date():
         raise HTTPException(status_code=400, detail="La actividad ya pasó")
 
     # 4. Verificar que haya cupos disponibles
-    inscritos = db.query(Asistencia).filter(
-        Asistencia.actividad_id == data.actividad_id
-    ).count()
+    inscritos = (
+        db.query(Asistencia)
+        .filter(Asistencia.actividad_id == data.actividad_id)
+        .count()
+    )
     if inscritos >= actividad.cupos:
         raise HTTPException(status_code=400, detail="No hay cupos disponibles")
 
     # 5. Verificar que no esté ya inscrito
-    ya_inscrito = db.query(Asistencia).filter(
-        Asistencia.actividad_id == data.actividad_id,
-        Asistencia.num_cuenta == num_cuenta
-    ).first()
+    ya_inscrito = (
+        db.query(Asistencia)
+        .filter(
+            Asistencia.actividad_id == data.actividad_id,
+            Asistencia.num_cuenta == num_cuenta,
+        )
+        .first()
+    )
     if ya_inscrito:
-        raise HTTPException(status_code=400, detail="Ya estás inscrito en esta actividad")
+        raise HTTPException(
+            status_code=400, detail="Ya estás inscrito en esta actividad"
+        )
 
     # 6. Obtener estado "inscrito"
-    estado = db.query(EstadoAsistencia).filter(
-        EstadoAsistencia.nombre_estado == "Inscrito"
-    ).first()
+    estado = (
+        db.query(EstadoAsistencia)
+        .filter(EstadoAsistencia.nombre_estado == "Inscrito")
+        .first()
+    )
 
     if not estado:
-        raise HTTPException(status_code=500, detail="El estado 'Inscrito' no está configurado en la base de datos")
+        raise HTTPException(
+            status_code=500,
+            detail="El estado 'Inscrito' no está configurado en la base de datos",
+        )
 
     # 7. Crear inscripción
     nueva_inscripcion = Asistencia(
@@ -62,7 +88,7 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
         check_in=False,
         check_out=False,
         estado_asistencia_id=estado.id,
-        horas_registradas=0
+        horas_registradas=0,
     )
 
     db.add(nueva_inscripcion)
@@ -73,29 +99,38 @@ def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session)
         id=nueva_inscripcion.id,
         actividad_id=nueva_inscripcion.actividad_id,
         num_cuenta=nueva_inscripcion.num_cuenta,
-        estado=estado.nombre_estado
+        estado=estado.nombre_estado,
     )
 
 
 def cancelar_inscripcion_controller(actividad_id: int, num_cuenta: str, db: Session):
     # 1. Buscar inscripción
-    inscripcion = db.query(Asistencia).filter(
-        Asistencia.actividad_id == actividad_id,
-        Asistencia.num_cuenta == num_cuenta
-    ).first()
+    inscripcion = (
+        db.query(Asistencia)
+        .filter(
+            Asistencia.actividad_id == actividad_id, Asistencia.num_cuenta == num_cuenta
+        )
+        .first()
+    )
 
     if not inscripcion:
-        raise HTTPException(status_code=404, detail="No estás inscrito en esta actividad")
+        raise HTTPException(
+            status_code=404, detail="No estás inscrito en esta actividad"
+        )
 
     # 2. Verificar que la actividad no haya comenzado
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
-    ahora = datetime.now()
-    inicio_actividad = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
+
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+    ahora = datetime.now(tz_hn)
+    inicio_actividad = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_inicio
+    )
 
     if ahora >= inicio_actividad - timedelta(hours=2):
         raise HTTPException(
             status_code=400,
-            detail="No puedes cancelar con menos de 2 horas de anticipación"
+            detail="No puedes cancelar con menos de 2 horas de anticipación",
         )
 
     # 3. Eliminar inscripción
@@ -106,9 +141,9 @@ def cancelar_inscripcion_controller(actividad_id: int, num_cuenta: str, db: Sess
 
 
 def mis_inscripciones_controller(num_cuenta: str, db: Session):
-    inscripciones = db.query(Asistencia).filter(
-        Asistencia.num_cuenta == num_cuenta
-    ).all()
+    inscripciones = (
+        db.query(Asistencia).filter(Asistencia.num_cuenta == num_cuenta).all()
+    )
 
     return [
         MisInscripcionesResponse(
@@ -120,10 +155,11 @@ def mis_inscripciones_controller(num_cuenta: str, db: Session):
             hora_final=i.actividad.hora_final,
             ubicacion=i.actividad.ubicacion,
             horas_asignar=i.actividad.horas_asignar,
-            estado=i.estado.nombre_estado
+            estado=i.estado.nombre_estado,
         )
         for i in inscripciones
     ]
+
 
 def _verificar_inscripcion(actividad_id: int, num_cuenta: str, db: Session) -> tuple:
     """Retorna (actividad, inscripcion) o lanza HTTPException"""
@@ -131,19 +167,26 @@ def _verificar_inscripcion(actividad_id: int, num_cuenta: str, db: Session) -> t
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    inscripcion = db.query(Asistencia).filter(
-        Asistencia.actividad_id == actividad_id,
-        Asistencia.num_cuenta == num_cuenta
-    ).first()
+    inscripcion = (
+        db.query(Asistencia)
+        .filter(
+            Asistencia.actividad_id == actividad_id, Asistencia.num_cuenta == num_cuenta
+        )
+        .first()
+    )
     if not inscripcion:
-        raise HTTPException(status_code=403, detail="No estás inscrito en esta actividad")
+        raise HTTPException(
+            status_code=403, detail="No estás inscrito en esta actividad"
+        )
 
     return actividad, inscripcion
+
 
 def _verificar_token_qr(token: str, tipo: str, db) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except:
+    except Exception as e:
+        print(f"Error decodificando JWT: {e}")
         raise HTTPException(status_code=400, detail="QR inválido o expirado")
 
     if payload.get("tipo") != tipo:
@@ -151,71 +194,89 @@ def _verificar_token_qr(token: str, tipo: str, db) -> dict:
 
     actividad_id = payload.get("actividad_id")
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
-    token_guardado = actividad.token_entrada if tipo == "entrada" else actividad.token_salida
+    token_guardado = (
+        actividad.token_entrada if tipo == "entrada" else actividad.token_salida
+    )
 
     if not actividad or token_guardado != token:
         raise HTTPException(status_code=400, detail="QR inválido")
 
-    ahora = datetime.now()
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+    ahora = datetime.now(tz_hn)
 
     if tipo == "entrada":
-        referencia_tiempo = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
+        referencia_tiempo = datetime.combine(
+            actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
+        )
         hora_mostrar = actividad.hora_inicio
     else:
-        referencia_tiempo = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
+        referencia_tiempo = datetime.combine(
+            actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
+        )
         hora_mostrar = actividad.hora_final
 
     if ahora < referencia_tiempo:
         raise HTTPException(
             status_code=400,
-            detail=f"El QR de {tipo} solo es válido a partir de las {hora_mostrar}"
+            detail=f"El QR de {tipo} solo es válido a partir de las {hora_mostrar}",
         )
 
     return payload
 
+
 def _actualizar_estado(inscripcion, nombre_estado: str, db):
-    estado = db.query(EstadoAsistencia).filter(
-        EstadoAsistencia.nombre_estado == nombre_estado
-    ).first()
+    estado = (
+        db.query(EstadoAsistencia)
+        .filter(EstadoAsistencia.nombre_estado == nombre_estado)
+        .first()
+    )
     if estado:
         inscripcion.estado_asistencia_id = estado.id
 
 
-def _sumar_horas(inscripcion, actividad, num_cuenta:str, db):
+def _sumar_horas(inscripcion, actividad, num_cuenta: str, db):
     inscripcion.check_out = True
     inscripcion.horas_registradas = actividad.horas_asignar
 
+
 def generar_qr_entrada_controller(actividad_id: int, db) -> bytes:
-    #buscar actividad
+    # buscar actividad
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    inicio = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+
+    inicio = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
+    )
     exp_time = inicio + timedelta(minutes=QR_TTL_MIN)
 
-    #generar token JWT para el QR
+    # generar token JWT para el QR
     token = jwt.encode(
         {
             "actividad_id": actividad_id,
             "tipo": "entrada",
-            "exp": int(exp_time.timestamp())
+            "exp": int(exp_time.timestamp()),
         },
         SECRET_KEY,
-        algorithm=ALGORITHM
+        algorithm=ALGORITHM,
     )
 
-    #Guardar token en la actividad
+    # Guardar token en la actividad
     actividad.token_entrada = token
     db.commit()
 
     return generar_qr(token, "entrada")
 
-def registrar_entrada_qr_controller(token: str, num_cuenta:str, db):
-    payload = _verificar_token_qr(token, "entrada", db)
-    actividad, inscripcion = _verificar_inscripcion(payload["actividad_id"], num_cuenta, db)
 
-    #Verificar que no haya registrado entrada ya 
+def registrar_entrada_qr_controller(token: str, num_cuenta: str, db):
+    payload = _verificar_token_qr(token, "entrada", db)
+    actividad, inscripcion = _verificar_inscripcion(
+        payload["actividad_id"], num_cuenta, db
+    )
+
+    # Verificar que no haya registrado entrada ya
     if inscripcion.check_in:
         raise HTTPException(status_code=400, detail="Ya registraste tu entrada")
 
@@ -224,35 +285,42 @@ def registrar_entrada_qr_controller(token: str, num_cuenta:str, db):
     db.commit()
     return {"mensaje": "Entrada registrada exitosamente"}
 
+
 def generar_qr_salida_controller(actividad_id: int, db) -> bytes:
-    #buscar actividad
+    # buscar actividad
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    fin = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+    fin = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
+    )
     exp_fin = fin + timedelta(minutes=QR_TTL_MIN)
 
-    #generar token JWT para el QR
+    # generar token JWT para el QR
     token = jwt.encode(
         {
             "actividad_id": actividad_id,
             "tipo": "salida",
-            "exp": int(exp_fin.timestamp())
+            "exp": int(exp_fin.timestamp()),
         },
         SECRET_KEY,
-        algorithm=ALGORITHM
+        algorithm=ALGORITHM,
     )
 
-    #Guardar token en la actividad
+    # Guardar token en la actividad
     actividad.token_salida = token
     db.commit()
 
     return generar_qr(token, "salida")
 
-def registrar_salida_qr_controller(token:str, num_cuenta: str, db):
+
+def registrar_salida_qr_controller(token: str, num_cuenta: str, db):
     payload = _verificar_token_qr(token, "salida", db)
-    actividad, inscripcion = _verificar_inscripcion(payload["actividad_id"], num_cuenta, db)
+    actividad, inscripcion = _verificar_inscripcion(
+        payload["actividad_id"], num_cuenta, db
+    )
 
     if not inscripcion.check_in:
         raise HTTPException(status_code=400, detail="Debes registrar entrada primero")
@@ -263,7 +331,10 @@ def registrar_salida_qr_controller(token:str, num_cuenta: str, db):
     db.commit()
     return {"mensaje": "Salida registrada, horas acumuladas"}
 
-def registrar_entrada_manual_controller(actividad_id: int, num_cuenta: str, db: Session):
+
+def registrar_entrada_manual_controller(
+    actividad_id: int, num_cuenta: str, db: Session
+):
     actividad, inscripcion = _verificar_inscripcion(actividad_id, num_cuenta, db)
 
     if inscripcion.check_in:
@@ -287,14 +358,15 @@ def registrar_salida_manual_controller(actividad_id: int, num_cuenta: str, db: S
     db.commit()
     return {"mensaje": f"Salida registrada para {num_cuenta}"}
 
+
 def ver_lista_asistencia_controller(actividad_id: int, db):
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    inscripciones = db.query(Asistencia).filter(
-        Asistencia.actividad_id == actividad_id
-    ).all()
+    inscripciones = (
+        db.query(Asistencia).filter(Asistencia.actividad_id == actividad_id).all()
+    )
 
     return [
         {
@@ -302,8 +374,7 @@ def ver_lista_asistencia_controller(actividad_id: int, db):
             "check_in": i.check_in,
             "check_out": i.check_out,
             "horas_registradas": i.horas_registradas,
-            "estado": i.estado.nombre_estado
+            "estado": i.estado.nombre_estado,
         }
         for i in inscripciones
     ]
-

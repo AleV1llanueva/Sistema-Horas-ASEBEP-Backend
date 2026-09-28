@@ -1,7 +1,9 @@
 # schemas/actividad.py
 from pydantic import BaseModel, field_validator
 from typing import Optional
-from datetime import date, time
+from datetime import date, time, datetime
+from zoneinfo import ZoneInfo
+
 
 class CrearActividadInput(BaseModel):
     titulo: str
@@ -37,8 +39,11 @@ class CrearActividadInput(BaseModel):
     @field_validator("fecha_actividad")
     @classmethod
     def validar_fecha(cls, v):
-        print(f"Fecha recibida: {v} | Hoy: {date.today()}")
-        if v < date.today():
+
+        hoy = datetime.now(ZoneInfo("America/Tegucigalpa")).date()
+
+        print(f"Fecha recibida: {v} | Hoy: {hoy}")
+        if v < hoy:
             raise ValueError("La fecha de la actividad no puede ser en el pasado")
         return v
 
@@ -59,11 +64,13 @@ class CrearActividadInput(BaseModel):
     def validar_hora_inicio(cls, v, info):
         fecha = info.data.get("fecha_actividad")
         if fecha:
-            from datetime import datetime, timezone
-            ahora = datetime.now()
+            tz_hn = ZoneInfo("America/Tegucigalpa")
+            ahora = datetime.now(tz_hn)
             # quitar timezone del time si lo tiene
-            v_sin_tz = v.replace(tzinfo=None) if hasattr(v, 'tzinfo') and v.tzinfo else v
-            inicio = datetime.combine(fecha, v_sin_tz)
+            v_sin_tz = v.replace(tzinfo=None) if getattr(v, "tzinfo", None) else v
+            inicio_naive = datetime.combine(fecha, v_sin_tz)
+
+            inicio = inicio_naive.replace(tzinfo=tz_hn)
             if inicio <= ahora:
                 raise ValueError("El horario de la actividad ya pasó")
         return v

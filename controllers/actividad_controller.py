@@ -1,5 +1,4 @@
 # controllers/actividad_controller.py
-from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from models.actividad import Actividad
@@ -7,13 +6,17 @@ from models.estado_actividad import EstadoActividad
 from models.asistencia import Asistencia
 from schemas.actividad import CrearActividadInput, ActividadResponse
 
-def _cupos_disponibles(actividad_id:int, cupos_totales:int, db:Session) -> int:
-    inscritos = db.query(Asistencia).filter(
-        Asistencia.actividad_id == actividad_id
-    ).count()
+
+from datetime import date, time, datetime
+from zoneinfo import ZoneInfo
+
+
+def _cupos_disponibles(actividad_id: int, cupos_totales: int, db: Session) -> int:
+    inscritos = (
+        db.query(Asistencia).filter(Asistencia.actividad_id == actividad_id).count()
+    )
     return cupos_totales - inscritos
 
-from datetime import datetime
 
 def _calcular_estado_dinamico(actividad) -> str:
     estado_guardado = actividad.estado.nombre_estado if actividad.estado else None
@@ -21,9 +24,14 @@ def _calcular_estado_dinamico(actividad) -> str:
     if estado_guardado == "Cancelada":
         return "Cancelada"
 
-    ahora = datetime.now()
-    inicio_dt = datetime.combine(actividad.fecha_actividad, actividad.hora_inicio)
-    fin_dt = datetime.combine(actividad.fecha_actividad, actividad.hora_final)
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+    ahora = datetime.now(tz_hn)
+    inicio_dt = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
+    )
+    fin_dt = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
+    )
 
     if ahora < inicio_dt:
         return "Programada"
@@ -33,16 +41,22 @@ def _calcular_estado_dinamico(actividad) -> str:
         return "Completada"
 
 
-def crear_actividad_controller(data: CrearActividadInput, db: Session) -> ActividadResponse:
-    #Obtener estado "programada" por defecto
-    estado = db.query(EstadoActividad).filter(
-        EstadoActividad.nombre_estado == "Programada"
-    ).first()
+def crear_actividad_controller(
+    data: CrearActividadInput, db: Session
+) -> ActividadResponse:
+    # Obtener estado "programada" por defecto
+    estado = (
+        db.query(EstadoActividad)
+        .filter(EstadoActividad.nombre_estado == "Programada")
+        .first()
+    )
 
     if not estado:
-        raise HTTPException(status_code=500, detail="Estado 'Programada' no encontrado en BD")
+        raise HTTPException(
+            status_code=500, detail="Estado 'Programada' no encontrado en BD"
+        )
 
-    #Crear actividad
+    # Crear actividad
     nueva_actividad = Actividad(
         titulo=data.titulo,
         descripcion=data.descripcion,
@@ -52,7 +66,7 @@ def crear_actividad_controller(data: CrearActividadInput, db: Session) -> Activi
         hora_inicio=data.hora_inicio,
         hora_final=data.hora_final,
         cupos=data.cupos,
-        estado_actividad_id=estado.id
+        estado_actividad_id=estado.id,
     )
 
     db.add(nueva_actividad)
@@ -69,17 +83,25 @@ def crear_actividad_controller(data: CrearActividadInput, db: Session) -> Activi
         hora_inicio=nueva_actividad.hora_inicio,
         hora_final=nueva_actividad.hora_final,
         cupos=nueva_actividad.cupos,
-        cupos_disponibles=_cupos_disponibles(nueva_actividad.id, nueva_actividad.cupos, db),
-        estado=estado.nombre_estado
+        cupos_disponibles=_cupos_disponibles(
+            nueva_actividad.id, nueva_actividad.cupos, db
+        ),
+        estado=estado.nombre_estado,
     )
 
 
 def ver_actividades_controller(db: Session):
-    hoy = date.today()
 
-    actividades = db.query(Actividad).join(EstadoActividad).filter(
-        Actividad.fecha_actividad >= hoy,
-    ).all()
+    hoy = datetime.now(ZoneInfo("America/Tegucigalpa")).date()
+
+    actividades = (
+        db.query(Actividad)
+        .join(EstadoActividad)
+        .filter(
+            Actividad.fecha_actividad >= hoy,
+        )
+        .all()
+    )
 
     return [
         ActividadResponse(
@@ -93,12 +115,15 @@ def ver_actividades_controller(db: Session):
             hora_final=a.hora_final,
             cupos=a.cupos,
             cupos_disponibles=_cupos_disponibles(a.id, a.cupos, db),
-            estado=_calcular_estado_dinamico(a)
+            estado=_calcular_estado_dinamico(a),
         )
         for a in actividades
     ]
 
-def editar_actividad_controller(actividad_id: int, data: CrearActividadInput, db: Session) -> ActividadResponse:
+
+def editar_actividad_controller(
+    actividad_id: int, data: CrearActividadInput, db: Session
+) -> ActividadResponse:
     # 1. Buscar la actividad existente
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
@@ -109,8 +134,8 @@ def editar_actividad_controller(actividad_id: int, data: CrearActividadInput, db
     hoy = date.today()
     if actividad.fecha_actividad < hoy:
         raise HTTPException(
-            status_code=400, 
-            detail="No se puede editar una actividad cuya fecha ya pasó"
+            status_code=400,
+            detail="No se puede editar una actividad cuya fecha ya pasó",
         )
 
     # 3. Actualizar los campos con los nuevos datos enviados
@@ -138,14 +163,23 @@ def editar_actividad_controller(actividad_id: int, data: CrearActividadInput, db
         hora_final=actividad.hora_final,
         cupos=actividad.cupos,
         cupos_disponibles=_cupos_disponibles(actividad.id, actividad.cupos, db),
-        estado=actividad.estado.nombre_estado if actividad.estado else "Programada"
+        estado=actividad.estado.nombre_estado if actividad.estado else "Programada",
     )
 
+
 def obtener_estado_actividad_id(nombre_estado: str, db: Session) -> int:
-    estado = db.query(EstadoActividad).filter(EstadoActividad.nombre_estado == nombre_estado).first()
+    estado = (
+        db.query(EstadoActividad)
+        .filter(EstadoActividad.nombre_estado == nombre_estado)
+        .first()
+    )
     if not estado:
-        raise HTTPException(status_code=500, detail=f"Estado de actividad '{nombre_estado}' no configurado")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Estado de actividad '{nombre_estado}' no configurado",
+        )
     return estado.id
+
 
 def cancelar_actividad_controller(actividad_id: int, db: Session):
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
@@ -155,7 +189,7 @@ def cancelar_actividad_controller(actividad_id: int, db: Session):
     if actividad.fecha_actividad < date.today():
         raise HTTPException(
             status_code=400,
-            detail="No se puede cancelar una actividad cuya fecha ya pasó"
+            detail="No se puede cancelar una actividad cuya fecha ya pasó",
         )
 
     estado_actual = actividad.estado.nombre_estado if actividad.estado else None
@@ -166,6 +200,7 @@ def cancelar_actividad_controller(actividad_id: int, db: Session):
     db.commit()
     return {"mensaje": "Actividad cancelada exitosamente"}
 
+
 def reactivar_actividad_controller(actividad_id: int, db: Session):
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
     if not actividad:
@@ -174,7 +209,7 @@ def reactivar_actividad_controller(actividad_id: int, db: Session):
     if actividad.fecha_actividad < date.today():
         raise HTTPException(
             status_code=400,
-            detail="No se puede reactivar una actividad cuya fecha ya pasó"
+            detail="No se puede reactivar una actividad cuya fecha ya pasó",
         )
 
     estado_actual = actividad.estado.nombre_estado if actividad.estado else None
