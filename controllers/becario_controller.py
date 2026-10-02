@@ -12,14 +12,16 @@ from models.aportacion import Aportacion
 from models.estado_aportación import EstadoAportacion
 from models.asistencia import Asistencia
 
-from schemas.becario import (LoginResponse, 
-                             Credenciales, 
-                             DatosPersonales, 
-                             DatosBecario, 
-                             BecarioGeneralResponse, 
-                             AdminInfoResponse,
-                             BecarioUpdateInput
+from schemas.becario import (
+    LoginResponse,
+    Credenciales,
+    DatosPersonales,
+    DatosBecario,
+    BecarioGeneralResponse,
+    AdminInfoResponse,
+    BecarioUpdateInput,
 )
+
 
 def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
     fecha_actual = date.today()
@@ -28,10 +30,12 @@ def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
     mes_ingreso = mes_inicio
 
     while True:
-        if anio_ingreso > fecha_actual.year or (anio_ingreso == fecha_actual.year and mes_ingreso > fecha_actual.month):
+        if anio_ingreso > fecha_actual.year or (
+            anio_ingreso == fecha_actual.year and mes_ingreso > fecha_actual.month
+        ):
             break
 
-        enero_especial = (mes_ingreso == 1 and anio_ingreso in [2024, 2025])
+        enero_especial = mes_ingreso == 1 and anio_ingreso in [2024, 2025]
 
         if mes_ingreso not in [1, 12] or enero_especial:
             meses_activos.append((anio_ingreso, mes_ingreso))
@@ -44,15 +48,20 @@ def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
 
     return meses_activos
 
+
 def calcular_horas_totales(num_cuenta: str, db: Session) -> int:
     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
     horas_base = becario.horas_acumuladas if becario else 0
 
-    horas_actividades = db.query(func.sum(Asistencia.horas_registradas)).filter(
-        Asistencia.num_cuenta == num_cuenta
-    ).scalar() or 0
+    horas_actividades = (
+        db.query(func.sum(Asistencia.horas_registradas))
+        .filter(Asistencia.num_cuenta == num_cuenta)
+        .scalar()
+        or 0
+    )
 
     return horas_base + horas_actividades
+
 
 def calcular_periodo_pac(mes_inicio: int) -> str:
     if mes_inicio <= 5:
@@ -62,10 +71,11 @@ def calcular_periodo_pac(mes_inicio: int) -> str:
     else:
         return "III-PAC"
 
+
 # --- HELPER PRIVADO PARA EVITAR CÓDIGO REPETIDO ---
 def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     """Construye y calcula los datos completos de un becario (horas, pagos, relaciones)."""
-    
+
     # 1. Buscar relaciones
     carrera = db.query(Carrera).filter(Carrera.id == usuario.carrera_id).first()
     carrera_nombre = carrera.nombre_carrera if carrera else "Sin carrera"
@@ -73,26 +83,38 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     rol = db.query(Rol).filter(Rol.id == usuario.rol_id).first()
     rol_nombre = rol.nombre_rol if rol else "Sin rol"
 
-    estado_beca = db.query(EstadoBeca).filter(EstadoBeca.id == becario.estado_beca_id).first()
+    estado_beca = (
+        db.query(EstadoBeca).filter(EstadoBeca.id == becario.estado_beca_id).first()
+    )
     estado_beca_nombre = estado_beca.nombre_estado if estado_beca else "Sin estado"
 
     # 2. Calcular horas
     meses_activos = calcular_meses_activos(becario.mes_inicio, becario.anio_inicio)
     horas_esperadas = len(meses_activos) * 20
     horas_totales = calcular_horas_totales(becario.num_cuenta, db)
-    horas_faltantes = max(0, horas_esperadas - becario.horas_acumuladas)
+    horas_faltantes = max(0, horas_esperadas - horas_totales)
 
     # 3. Calcular pagos
-    estado_aprobado = db.query(EstadoAportacion).filter(EstadoAportacion.nombre_estado == "Aprobado").first()
+    estado_aprobado = (
+        db.query(EstadoAportacion)
+        .filter(EstadoAportacion.nombre_estado == "Aprobado")
+        .first()
+    )
 
     total_meses_aprobados = 0
     if estado_aprobado:
-        aportaciones_aprobadas = db.query(Aportacion).filter(
-            Aportacion.num_cuenta == usuario.num_cuenta,
-            Aportacion.estado_aportacion_id == estado_aprobado.id
-        ).all()
+        aportaciones_aprobadas = (
+            db.query(Aportacion)
+            .filter(
+                Aportacion.num_cuenta == usuario.num_cuenta,
+                Aportacion.estado_aportacion_id == estado_aprobado.id,
+            )
+            .all()
+        )
 
-        total_meses_aprobados = sum((a.meses_aprobados or 0) for a in aportaciones_aprobadas)
+        total_meses_aprobados = sum(
+            (a.meses_aprobados or 0) for a in aportaciones_aprobadas
+        )
         total_meses_activos = len(meses_activos)
         meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
 
@@ -107,7 +129,7 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
         correo_personal=usuario.correo_personal,
         correo_institucional=usuario.correo_institucional,
         carrera=carrera_nombre,
-        telefono=usuario.telefono
+        telefono=usuario.telefono,
     )
     datos_becario = DatosBecario(
         periodo_inicio=becario.periodo_inicio,
@@ -115,10 +137,11 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
         horas_totales=horas_totales,
         horas_faltantes=horas_faltantes,
         meses_sin_pagar=meses_sin_pagar,
-        estado_beca=estado_beca_nombre
+        estado_beca=estado_beca_nombre,
     )
 
     return credenciales, datos_personales, datos_becario
+
 
 # Controlador Individual
 def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResponse:
@@ -129,7 +152,7 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
         if str(num_cuenta_actual) != str(num_cuenta):
             raise HTTPException(
                 status_code=403,
-                detail="Acceso denegado: No tienes permisos para consultar los datos de otro usuario"
+                detail="Acceso denegado: No tienes permisos para consultar los datos de otro usuario",
             )
 
     usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
@@ -140,13 +163,16 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
     if not becario:
         raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
 
-    credenciales, datos_personales, datos_becario = _construir_detalle_becario(usuario, becario, db)
+    credenciales, datos_personales, datos_becario = _construir_detalle_becario(
+        usuario, becario, db
+    )
 
     return LoginResponse(
         credenciales=credenciales,
         datos_personales=datos_personales,
-        datos_becario=datos_becario
+        datos_becario=datos_becario,
     )
+
 
 # Controladore general
 def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
@@ -157,21 +183,26 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
     resultado_general = []
 
     for becario in perfiles_becarios:
-        usuario = db.query(Usuario).filter(Usuario.num_cuenta == becario.num_cuenta).first()
+        usuario = (
+            db.query(Usuario).filter(Usuario.num_cuenta == becario.num_cuenta).first()
+        )
         if not usuario:
             continue
 
-        credenciales, datos_personales, datos_becario = _construir_detalle_becario(usuario, becario, db)
+        credenciales, datos_personales, datos_becario = _construir_detalle_becario(
+            usuario, becario, db
+        )
 
         resultado_general.append(
             BecarioGeneralResponse(
                 credenciales=credenciales,
                 datos_personales=datos_personales,
-                datos_becario=datos_becario
+                datos_becario=datos_becario,
             )
         )
 
     return resultado_general
+
 
 def usuario_me_controller(request: Request, db: Session):
     num_cuenta_actual = getattr(request.state, "num_cuenta", None)
@@ -181,33 +212,56 @@ def usuario_me_controller(request: Request, db: Session):
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    if rol_actual == "Becario":
-        becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta_actual).first()
-        if not becario:
-            raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
-
-        credenciales, datos_personales, datos_becario = _construir_detalle_becario(usuario, becario, db)
-        return LoginResponse(
-            credenciales=credenciales,
-            datos_personales=datos_personales,
-            datos_becario=datos_becario
-        )
-
+    # if rol_actual == "Becario":
+    #     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta_actual).first()
+    #     if not becario:
+    #         raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
+    #
+    #     credenciales, datos_personales, datos_becario = _construir_detalle_becario(usuario, becario, db)
+    #     return LoginResponse(
+    #         credenciales=credenciales,
+    #         datos_personales=datos_personales,
+    #         datos_becario=datos_becario
+    #     )
+    #
     # Es admin (Admin General, Admin Aportaciones, o Admin Horas)
-    return AdminInfoResponse(
-        num_cuenta=usuario.num_cuenta,
-        primer_nombre=usuario.primer_nombre,
-        segundo_nombre=usuario.segundo_nombre,
-        primer_apellido=usuario.primer_apellido,
-        segundo_apellido=usuario.segundo_apellido,
-        correo_institucional=usuario.correo_institucional,
-        rol=rol_actual
+    #
+    # ------Este cambio será temporal, en caso de que vea que la demas info no se usa, se hara una restructuracion
+    #
+    # return AdminInfoResponse(
+    #     num_cuenta=usuario.num_cuenta,
+    #     primer_nombre=usuario.primer_nombre,
+    #     segundo_nombre=usuario.segundo_nombre,
+    #     primer_apellido=usuario.primer_apellido,
+    #     segundo_apellido=usuario.segundo_apellido,
+    #     correo_institucional=usuario.correo_institucional,
+    #     rol=rol_actual
+    # )
+    #
+    #
+
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta_actual).first()
+    if not becario:
+        raise HTTPException(status_code=403, detail="Perfil Becario no encontrado")
+
+    credenciales, datos_personales, datos_becario = _construir_detalle_becario(
+        usuario, becario, db
+    )
+    return LoginResponse(
+        credenciales=credenciales,
+        datos_personales=datos_personales,
+        datos_becario=datos_becario,
     )
 
+
 def obtener_estado_beca_id(nombre_estado: str, db: Session) -> int:
-    estado = db.query(EstadoBeca).filter(EstadoBeca.nombre_estado == nombre_estado).first()
+    estado = (
+        db.query(EstadoBeca).filter(EstadoBeca.nombre_estado == nombre_estado).first()
+    )
     if not estado:
-        raise HTTPException(status_code=500, detail=f"Estado de beca '{nombre_estado}' no configurado")
+        raise HTTPException(
+            status_code=500, detail=f"Estado de beca '{nombre_estado}' no configurado"
+        )
     return estado.id
 
 
@@ -218,6 +272,7 @@ def verificar_y_finalizar_por_fecha(becario: Becario, db: Session):
             becario.estado_beca_id = obtener_estado_beca_id("Finalizado", db)
             db.commit()
             db.refresh(becario)
+
 
 def desactivar_becario_controller(num_cuenta: str, db: Session):
     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
@@ -246,7 +301,10 @@ def reactivar_becario_controller(num_cuenta: str, db: Session):
     db.commit()
     return {"mensaje": "Becario reactivado exitosamente"}
 
-def actualizar_becario_controller(num_cuenta: str, datos: BecarioUpdateInput, db: Session):
+
+def actualizar_becario_controller(
+    num_cuenta: str, datos: BecarioUpdateInput, db: Session
+):
     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
     if not becario:
         raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
@@ -256,7 +314,9 @@ def actualizar_becario_controller(num_cuenta: str, datos: BecarioUpdateInput, db
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     if datos.estado_beca_id is not None:
-        estado = db.query(EstadoBeca).filter(EstadoBeca.id == datos.estado_beca_id).first()
+        estado = (
+            db.query(EstadoBeca).filter(EstadoBeca.id == datos.estado_beca_id).first()
+        )
         if not estado:
             raise HTTPException(status_code=404, detail="Estado de beca no encontrado")
         becario.estado_beca_id = datos.estado_beca_id
