@@ -1,17 +1,18 @@
-import random 
+import random
 import os
 from datetime import datetime, timedelta, date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from utils.mail import enviar_pin
 
-from models.usuario import Usuario 
+from models.usuario import Usuario
 from models.pin_activacion import PinActivacion
 from models.pin_intentos import PinIntentos
 from schemas.pin_activacion import SolicitarPinInput, ActivarCuentaInput
 from core.security import hashear_password, verificar_password
 
 LIMITE_PINES_POR_USUARIO = int(os.getenv("LIMITE_PINES_USUARIO", 2))
+
 
 def _generar_pin() -> str:
     return str(random.randint(100000, 999999))
@@ -23,13 +24,19 @@ async def _solicitar_pin(usuario, db: Session, mensaje_exito: str):
     """
     # verificar límite de correos por usuario
     hoy = date.today()
-    intento = db.query(PinIntentos).filter(
-        PinIntentos.correo == usuario.correo_institucional,
-        PinIntentos.fecha == hoy
-    ).first()
+    intento = (
+        db.query(PinIntentos)
+        .filter(
+            PinIntentos.correo == usuario.correo_institucional, PinIntentos.fecha == hoy
+        )
+        .first()
+    )
 
     if intento and intento.intentos >= LIMITE_PINES_POR_USUARIO:
-        raise HTTPException(status_code=429, detail="Límite de PINs diarios alcanzados, intenta mañana nuevamente")
+        raise HTTPException(
+            status_code=429,
+            detail="Límite de PINs diarios alcanzados, intenta mañana nuevamente",
+        )
 
     # Si existe un pin anterior eliminarlo
     db.query(PinActivacion).filter(
@@ -40,11 +47,13 @@ async def _solicitar_pin(usuario, db: Session, mensaje_exito: str):
     pin = _generar_pin()
     pin_hash = hashear_password(pin)
 
-    db.add(PinActivacion(
-        correo=usuario.correo_institucional,
-        pin_hash=pin_hash,
-        expira_en=datetime.utcnow() + timedelta(minutes=15)
-    ))
+    db.add(
+        PinActivacion(
+            correo=usuario.correo_institucional,
+            pin_hash=pin_hash,
+            expira_en=datetime.utcnow() + timedelta(minutes=15),
+        )
+    )
     db.commit()
 
     # Enviar Correo — si falla, no se incrementa el contador
@@ -52,7 +61,7 @@ async def _solicitar_pin(usuario, db: Session, mensaje_exito: str):
         await enviar_pin(usuario.correo_institucional, pin, db)
     except Exception as e:
         db.rollback()
-        raise 
+        raise
 
     # Solo si el correo se envió bien, actualizar los intentos del usuario
     if intento:
@@ -66,7 +75,9 @@ async def _solicitar_pin(usuario, db: Session, mensaje_exito: str):
 
     # Avisar si es el ultimo intento
     if es_ultimo:
-        return {"mensaje": "PIN enviado. Este es tu último PIN disponible hoy, úsalo antes de que expire"}
+        return {
+            "mensaje": "PIN enviado. Este es tu último PIN disponible hoy, úsalo antes de que expire"
+        }
     return {"mensaje": "Pin enviado a tu correo institucional"}
 
 
@@ -93,21 +104,26 @@ def _verificar_pin(usuario, pin: str, db: Session):
     return pin_registro
 
 
-async def solicitar_pin_controller(data: SolicitarPinInput, db:Session):
-    #buscar usuario por numero de cuenta 
-    usuario = db.query(Usuario).filter(
-        Usuario.num_cuenta == data.num_cuenta
-    ).first()
+async def solicitar_pin_controller(data: SolicitarPinInput, db: Session):
+    # buscar usuario por numero de cuenta
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == data.num_cuenta).first()
 
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     if usuario.active:
-        raise HTTPException(status_code=400, detail= "Esta cuenta ya esta activada")
+        raise HTTPException(status_code=400, detail="Esta cuenta ya esta activada")
+
+    if not usuario.correo_institucional:
+        raise HTTPException(
+            status_code=400,
+            detail="No tiene correo institucional registrado, contacte a la asociacion",
+        )
 
     return await _solicitar_pin(usuario, db, "PIN enviado a tu correo institucional")
 
-async def solicitar_pin_cambio_controller(data: SolicitarPinInput, db:Session):
+
+async def solicitar_pin_cambio_controller(data: SolicitarPinInput, db: Session):
     # buscar usuario por numero de cuenta
     usuario = db.query(Usuario).filter(Usuario.num_cuenta == data.num_cuenta).first()
 
@@ -134,6 +150,7 @@ async def activar_cuenta_controller(data: ActivarCuentaInput, db: Session):
     usuario.active = True
     db.commit()
     return {"mensaje": "Cuenta activada exitosamente, ya puedes iniciar sesión"}
+
 
 async def cambiar_password_controller(data: ActivarCuentaInput, db: Session):
     usuario = db.query(Usuario).filter(Usuario.num_cuenta == data.num_cuenta).first()

@@ -176,7 +176,14 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
 
 # Controladore general
 def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
-    perfiles_becarios = db.query(Becario).all()
+    # perfiles_becarios = db.query(Becario).all()
+
+    perfiles_becarios = (
+        db.query(Becario)
+        .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
+        .filter(Usuario.correo_institucional.isnot(None))
+        .all()
+    )
     if not perfiles_becarios:
         return []
 
