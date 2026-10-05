@@ -3,6 +3,8 @@ from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from sqlalchemy import and_
+
 from models.usuario import Usuario
 from models.becario import Becario
 from models.carrera import Carrera
