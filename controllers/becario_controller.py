@@ -177,14 +177,69 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
 
 
 # Controladore general
+# def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
+#     # perfiles_becarios = db.query(Becario).all()
+#     #
+#     perfiles_becarios = (
+#         db.query(Becario)
+#         .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
+#         .filter(Usuario.correo_institucional.isnot(None))
+#         # Agregamos las condiciones para que mes_inicio y anio_inicio no sean nulos ni 0
+#         .filter(
+#             and_(
+#                 Becario.mes_inicio.isnot(None),
+#                 Becario.mes_inicio != 0,
+#                 Becario.anio_inicio.isnot(None),
+#                 Becario.anio_inicio != 0,
+#             )
+#         )
+#         .all()
+#     )
+#
+#     if not perfiles_becarios:
+#         return []
+#
+#     resultado_general = []
+#
+#     for becario in perfiles_becarios:
+#         usuario = (
+#             db.query(Usuario).filter(Usuario.num_cuenta == becario.num_cuenta).first()
+#         )
+#         if not usuario:
+#             continue
+#
+#         credenciales, datos_personales, datos_becario = _construir_detalle_becario(
+#             usuario, becario, db
+#         )
+#
+#         resultado_general.append(
+#             BecarioGeneralResponse(
+#                 credenciales=credenciales,
+#                 datos_personales=datos_personales,
+#                 datos_becario=datos_becario,
+#             )
+#         )
+#
+#     return resultado_general
+
+
 def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
-    # perfiles_becarios = db.query(Becario).all()
-    #
-    perfiles_becarios = (
-        db.query(Becario)
+    # 1. Obtener el ID del estado "Aprobado" UNA SOLA VEZ
+    estado_aprobado = (
+        db.query(EstadoAportacion)
+        .filter(EstadoAportacion.nombre_estado == "Aprobado")
+        .first()
+    )
+    estado_aprobado_id = estado_aprobado.id if estado_aprobado else None
+
+    # 2. Obtener TODOS los datos base usando JOINs en UNA SOLA CONSULTA
+    resultados_base = (
+        db.query(Becario, Usuario, Carrera, Rol, EstadoBeca)
         .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
+        .outerjoin(Carrera, Usuario.carrera_id == Carrera.id)
+        .outerjoin(Rol, Usuario.rol_id == Rol.id)
+        .outerjoin(EstadoBeca, Becario.estado_beca_id == EstadoBeca.id)
         .filter(Usuario.correo_institucional.isnot(None))
-        # Agregamos las condiciones para que mes_inicio y anio_inicio no sean nulos ni 0
         .filter(
             and_(
                 Becario.mes_inicio.isnot(None),
@@ -196,20 +251,80 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
         .all()
     )
 
-    if not perfiles_becarios:
+    if not resultados_base:
         return []
 
+    # 3. Obtener TODAS las asistencias agrupadas por número de cuenta en UNA CONSULTA
+    asistencias = (
+        db.query(
+            Asistencia.num_cuenta,
+            func.sum(Asistencia.horas_registradas).label("total_horas"),
+        )
+        .group_by(Asistencia.num_cuenta)
+        .all()
+    )
+    # Convertir a un diccionario para búsqueda rápida en memoria { "numero_cuenta": horas_totales }
+    mapa_asistencias = {num: total or 0 for num, total in asistencias}
+
+    # 4. Obtener TODAS las aportaciones agrupadas por número de cuenta en UNA CONSULTA
+    mapa_aportaciones = {}
+    if estado_aprobado_id:
+        aportaciones = (
+            db.query(
+                Aportacion.num_cuenta,
+                func.sum(Aportacion.meses_aprobados).label("total_meses"),
+            )
+            .filter(Aportacion.estado_aportacion_id == estado_aprobado_id)
+            .group_by(Aportacion.num_cuenta)
+            .all()
+        )
+        mapa_aportaciones = {num: total or 0 for num, total in aportaciones}
+
+    # 5. Ensamblar la respuesta en memoria (CERO consultas a la BD dentro del bucle)
     resultado_general = []
 
-    for becario in perfiles_becarios:
-        usuario = (
-            db.query(Usuario).filter(Usuario.num_cuenta == becario.num_cuenta).first()
-        )
-        if not usuario:
-            continue
+    for becario, usuario, carrera, rol, estado_beca in resultados_base:
+        num_cuenta = becario.num_cuenta
 
-        credenciales, datos_personales, datos_becario = _construir_detalle_becario(
-            usuario, becario, db
+        # Nombres de relaciones
+        carrera_nombre = carrera.nombre_carrera if carrera else "Sin carrera"
+        rol_nombre = rol.nombre_rol if rol else "Sin rol"
+        estado_beca_nombre = estado_beca.nombre_estado if estado_beca else "Sin estado"
+
+        # Calcular horas (100% en memoria)
+        meses_activos = calcular_meses_activos(becario.mes_inicio, becario.anio_inicio)
+        horas_esperadas = len(meses_activos) * 20
+
+        horas_base = becario.horas_acumuladas if becario.horas_acumuladas else 0
+        horas_actividades = mapa_asistencias.get(num_cuenta, 0)
+        horas_totales = horas_base + horas_actividades
+        horas_faltantes = max(0, horas_esperadas - horas_totales)
+
+        # Calcular pagos (100% en memoria)
+        total_meses_aprobados = mapa_aportaciones.get(num_cuenta, 0)
+        total_meses_activos = len(meses_activos)
+        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
+
+        # Crear schemas Pydantic
+        credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
+        datos_personales = DatosPersonales(
+            num_cuenta=usuario.num_cuenta,
+            p_nombre=usuario.primer_nombre,
+            s_nombre=usuario.segundo_nombre,
+            p_apellido=usuario.primer_apellido,
+            s_apellido=usuario.segundo_apellido,
+            correo_personal=usuario.correo_personal,
+            correo_institucional=usuario.correo_institucional,
+            carrera=carrera_nombre,
+            telefono=usuario.telefono,
+        )
+        datos_becario = DatosBecario(
+            periodo_inicio=becario.periodo_inicio,
+            anio_inicio=becario.anio_inicio,
+            horas_totales=horas_totales,
+            horas_faltantes=horas_faltantes,
+            meses_sin_pagar=meses_sin_pagar,
+            estado_beca=estado_beca_nombre,
         )
 
         resultado_general.append(
