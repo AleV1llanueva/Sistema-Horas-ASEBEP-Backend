@@ -119,7 +119,7 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
         )
 
         # Sumar el monto acumulado
-        meses_aportacion_anteriores = becario.monto_acumulado / 12
+        meses_aportacion_anteriores = becario.monto_acumulado / 20
 
         total_meses_aprobados = total_meses_aprobados + meses_aportacion_anteriores
 
