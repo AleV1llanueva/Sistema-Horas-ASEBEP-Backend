@@ -117,6 +117,12 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
         total_meses_aprobados = sum(
             (a.meses_aprobados or 0) for a in aportaciones_aprobadas
         )
+
+        # Sumar el monto acumulado
+        meses_aportacion_anteriores = becario.monto_acumulado / 12
+
+        total_meses_aprobados = total_meses_aprobados + meses_aportacion_anteriores
+
         total_meses_activos = len(meses_activos)
         meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
 
