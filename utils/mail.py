@@ -1,4 +1,7 @@
-import os 
+import os
+import smtplib
+from email.message import EmailMessage
+
 import resend
 from dotenv import load_dotenv
 from fastapi import HTTPException
@@ -10,6 +13,9 @@ load_dotenv()
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
+SMTP_HOST = os.getenv("SMTP_HOST")          # si existe -> modo pruebas (Mailpit)
+SMTP_PORT = int(os.getenv("SMTP_PORT", "1025"))
+
 
 
 def _html_pin(pin: str) -> str:
@@ -25,7 +31,7 @@ def _html_pin(pin: str) -> str:
             <tr>
                 <td align="center">
                     <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-                        
+
                         <!-- HEADER -->
                         <tr>
                             <td style="background-color:#1a3a5c; padding:30px; text-align:center;">
@@ -39,7 +45,7 @@ def _html_pin(pin: str) -> str:
                             <td style="padding:40px 40px 20px 40px;">
                                 <h2 style="color:#1a3a5c; margin:0 0 16px 0; font-size:20px;">Activación de cuenta</h2>
                                 <p style="color:#555555; font-size:15px; line-height:1.6; margin:0 0 24px 0;">
-                                    Recibimos una solicitud para activar tu cuenta en el sistema ASEBEP. 
+                                    Recibimos una solicitud para activar tu cuenta en el sistema ASEBEP.
                                     Usa el siguiente PIN para completar el proceso:
                                 </p>
 
@@ -60,7 +66,7 @@ def _html_pin(pin: str) -> str:
                                     <tr>
                                         <td style="background-color:#fff8e1; border-left:4px solid #f5a623; border-radius:4px; padding:14px 18px;">
                                             <p style="margin:0; color:#7a5c00; font-size:14px;">
-                                                ⏱ Este PIN expira en <strong>15 minutos</strong>. 
+                                                ⏱ Este PIN expira en <strong>15 minutos</strong>.
                                                 Si no lo usas a tiempo, deberás solicitar uno nuevo.
                                             </p>
                                         </td>
@@ -68,7 +74,7 @@ def _html_pin(pin: str) -> str:
                                 </table>
 
                                 <p style="color:#888888; font-size:13px; line-height:1.6; margin:20px 0 0 0;">
-                                    Si no solicitaste la activación de esta cuenta, puedes ignorar este correo. 
+                                    Si no solicitaste la activación de esta cuenta, puedes ignorar este correo.
                                     Nadie más tiene acceso a tu cuenta.
                                 </p>
                             </td>
@@ -94,37 +100,54 @@ def _html_pin(pin: str) -> str:
     </html>
     """
 
-async def enviar_pin(correo: str, pin: str, db: Session):
 
-    # verificar quota
+def _enviar_smtp(correo: str, asunto: str, html: str) -> None:
+    msg = EmailMessage()
+    msg["From"] = FROM_EMAIL or "no-reply@asebep.local"
+    msg["To"] = correo
+    msg["Subject"] = asunto
+    msg.set_content("Tu cliente de correo no soporta HTML.")
+    msg.add_alternative(html, subtype="html")
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
+        smtp.send_message(msg)
+
+
+# _html_pin(...) queda igual
+
+
+async def enviar_pin(correo: str, pin: str, db: Session):
     hoy = date.today()
     quota = db.query(EmailQuota).filter(EmailQuota.fecha == hoy).first()
 
-    if quota and quota.correos_enviados >= 95:
+    if not SMTP_HOST and quota and quota.correos_enviados >= 95:
         raise HTTPException(
             status_code=429,
             detail="Límite diario de correos alcanzado, intenta mañana"
         )
 
-    params = {
-        "from": FROM_EMAIL,
-        "to": [correo],
-        "subject": "Activación de cuenta ASEBEP",
-        "html": _html_pin(pin)
-    }
+    asunto = "Activación de cuenta ASEBEP"
+    html = _html_pin(pin)
 
     try:
-        resend.Emails.send(params)
+        if SMTP_HOST:
+            _enviar_smtp(correo, asunto, html)
+        else:
+            resend.Emails.send({
+                "from": FROM_EMAIL,
+                "to": [correo],
+                "subject": asunto,
+                "html": html,
+            })
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Error al enviar correo {str(e)}"
         )
 
-    # actualizar contador
-    if quota:
-        quota.correos_enviados += 1
-    else:
-        db.add(EmailQuota(fecha=hoy, correos_enviados=1))
-    db.commit()
-
+    if not SMTP_HOST:
+        if quota:
+            quota.correos_enviados += 1
+        else:
+            db.add(EmailQuota(fecha=hoy, correos_enviados=1))
+        db.commit()

@@ -156,6 +156,9 @@ def mis_inscripciones_controller(num_cuenta: str, db: Session):
             ubicacion=i.actividad.ubicacion,
             horas_asignar=i.actividad.horas_asignar,
             estado=i.estado.nombre_estado,
+            check_in=bool(i.check_in),
+            check_out=bool(i.check_out),
+            horas_registradas=i.horas_registradas or 0,
         )
         for i in inscripciones
     ]
