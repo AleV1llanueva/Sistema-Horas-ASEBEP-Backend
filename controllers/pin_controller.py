@@ -11,7 +11,7 @@ from models.pin_intentos import PinIntentos
 from schemas.pin_activacion import SolicitarPinInput, ActivarCuentaInput
 from core.security import hashear_password, verificar_password
 
-LIMITE_PINES_POR_USUARIO = int(os.getenv("LIMITE_PINES_POR_USUARIO", 2))
+LIMITE_PINES_POR_USUARIO = int(os.getenv("LIMITE_PINES_POR_USUARIO", 200))
 
 
 def _generar_pin() -> str:

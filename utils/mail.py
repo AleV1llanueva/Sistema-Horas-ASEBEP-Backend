@@ -16,9 +16,9 @@ FROM_EMAIL = os.getenv("FROM_EMAIL")
 SMTP_HOST = os.getenv("SMTP_HOST")          # si existe -> modo pruebas (Mailpit)
 SMTP_PORT = int(os.getenv("SMTP_PORT", "1025"))
 
-# Correos que se pueden enviar por día en el plan gratuito de Resend.
-# Se deja un margen por debajo de los 100 reales del proveedor.
-LIMITE_CORREOS_DIARIOS = int(os.getenv("LIMITE_CORREOS_DIARIOS", "95"))
+# Correos que se pueden enviar por día.
+# Valor por defecto alto: el plan del proveedor admite más de 100.
+LIMITE_CORREOS_DIARIOS = int(os.getenv("LIMITE_CORREOS_DIARIOS", "50000"))
 
 
 
