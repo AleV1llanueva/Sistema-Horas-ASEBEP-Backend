@@ -16,6 +16,10 @@ FROM_EMAIL = os.getenv("FROM_EMAIL")
 SMTP_HOST = os.getenv("SMTP_HOST")          # si existe -> modo pruebas (Mailpit)
 SMTP_PORT = int(os.getenv("SMTP_PORT", "1025"))
 
+# Correos que se pueden enviar por día en el plan gratuito de Resend.
+# Se deja un margen por debajo de los 100 reales del proveedor.
+LIMITE_CORREOS_DIARIOS = int(os.getenv("LIMITE_CORREOS_DIARIOS", "95"))
+
 
 
 def _html_pin(pin: str) -> str:
@@ -120,7 +124,7 @@ async def enviar_pin(correo: str, pin: str, db: Session):
     hoy = date.today()
     quota = db.query(EmailQuota).filter(EmailQuota.fecha == hoy).first()
 
-    if not SMTP_HOST and quota and quota.correos_enviados >= 95:
+    if not SMTP_HOST and quota and quota.correos_enviados >= LIMITE_CORREOS_DIARIOS:
         raise HTTPException(
             status_code=429,
             detail="Límite diario de correos alcanzado, intenta mañana"
