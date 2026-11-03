@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 from typing import List
 from utils.database import get_db
-from schemas.asistencia import InscripcionInput, InscripcionResponse, MisInscripcionesResponse
+from schemas.asistencia import (
+    InscripcionInput,
+    InscripcionResponse,
+    MisInscripcionesResponse,
+    HistorialActividadesResponse,
+)
 from controllers.asistencia_controller import (
     inscribirse_controller, 
     cancelar_inscripcion_controller, 
@@ -13,7 +18,8 @@ from controllers.asistencia_controller import (
     registrar_salida_qr_controller,
     registrar_entrada_manual_controller,
     registrar_salida_manual_controller,
-    ver_lista_asistencia_controller
+    ver_lista_asistencia_controller,
+    historial_actividades_controller,
 )
 from core.security import becario, admin_horas
 
@@ -95,3 +101,21 @@ def registrar_salida_manual(request: Request, actividad_id: int, num_cuenta: str
 @admin_horas
 def ver_lista_asistencia(request: Request, actividad_id: int, db: Session = Depends(get_db)):
     return ver_lista_asistencia_controller(actividad_id, db)
+
+#Ver historial de actividades
+@router.get("/asistencias/historial", response_model=HistorialActividadesResponse,
+            tags=["Asistencias"])
+@becario
+def mi_historial(request: Request, incluir_futuras: bool = False,
+                 db: Session = Depends(get_db)):
+    return historial_actividades_controller(request.state.num_cuenta, db, incluir_futuras)
+
+#Ver historial de asistencia de actividades
+@router.get("/asistencias/usuarios/{num_cuenta}/historial",
+            response_model=HistorialActividadesResponse, tags=["Asistencias"])
+@admin_horas
+def historial_de_usuario(request: Request, num_cuenta: str,
+                         incluir_futuras: bool = False,
+                         db: Session = Depends(get_db)):
+    return historial_actividades_controller(num_cuenta, db, incluir_futuras)
+    

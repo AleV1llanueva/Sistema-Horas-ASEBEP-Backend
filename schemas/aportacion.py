@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 
@@ -11,6 +11,7 @@ class AportacionResponse(BaseModel):
     estado: str
     meses_aprobados: int = 0
     fecha_subida: datetime
+    comentario: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -18,6 +19,7 @@ class AportacionResponse(BaseModel):
 class RevisionAportacionInput(BaseModel):
     estado: str
     meses_aprobados: int = 0
+    comentario: Optional[str] = Field(default=None, max_length=500)
 
 class AportacionCrear(BaseModel):
     num_referencia: str

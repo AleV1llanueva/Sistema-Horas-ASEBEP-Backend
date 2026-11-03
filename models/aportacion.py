@@ -14,4 +14,5 @@ class Aportacion(Base):
     estado_aportacion_id = Column(Integer, ForeignKey("estados_aportacion.id"), nullable=False)
     fecha_subida = Column(DateTime, default=datetime.now)
     meses_aprobados = Column(Integer, nullable=False, default=0)
+    comentario = Column(String, nullable=True)
     estado = relationship("EstadoAportacion")

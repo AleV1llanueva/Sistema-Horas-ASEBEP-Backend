@@ -29,3 +29,9 @@ class MisInscripcionesResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class HistorialActividadesResponse(BaseModel):
+    num_cuenta: str
+    total_actividades: int
+    total_horas: int
+    actividades: list[MisInscripcionesResponse]

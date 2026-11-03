@@ -242,8 +242,15 @@ def _actualizar_estado(inscripcion, nombre_estado: str, db):
         .filter(EstadoAsistencia.nombre_estado == nombre_estado)
         .first()
     )
-    if estado:
-        inscripcion.estado_asistencia_id = estado.id
+    # Si el estado no existe en la BD es un error de configuración, no se
+    # debe ignorar en silencio (antes se tragaba el error y la asistencia
+    # se quedaba con el estado anterior sin avisar).
+    if not estado:
+        raise HTTPException(
+            status_code=500,
+            detail=f"El estado '{nombre_estado}' no está configurado en la base de datos",
+        )
+    inscripcion.estado_asistencia_id = estado.id
 
 
 def _sumar_horas(inscripcion, actividad, num_cuenta: str, db):
@@ -293,7 +300,7 @@ def registrar_entrada_qr_controller(token: str, num_cuenta: str, db):
         raise HTTPException(status_code=400, detail="Ya registraste tu entrada")
 
     inscripcion.check_in = True
-    _actualizar_estado(inscripcion, "Asistio", db)
+    _actualizar_estado(inscripcion, "Asistió", db)
     db.commit()
     return {"mensaje": "Entrada registrada exitosamente"}
 
@@ -390,3 +397,45 @@ def ver_lista_asistencia_controller(actividad_id: int, db):
         }
         for i in inscripciones
     ]
+
+def historial_actividades_controller(num_cuenta: str, db: Session,
+                                     incluir_futuras: bool = False):
+    hoy = datetime.now(ZoneInfo("America/Tegucigalpa")).date()
+
+    query = (
+        db.query(Asistencia)
+        .join(Actividad, Asistencia.actividad_id == Actividad.id)
+        .filter(Asistencia.num_cuenta == num_cuenta)
+    )
+    if not incluir_futuras:
+        query = query.filter(Actividad.fecha_actividad <= hoy)
+
+    registros = query.order_by(
+        Actividad.fecha_actividad.desc(),
+        Actividad.hora_inicio.desc()
+    ).all()
+
+    return {
+        "num_cuenta": num_cuenta,
+        "total_actividades": len(registros),
+        "total_horas": sum(r.horas_registradas or 0 for r in registros),
+        "actividades": [
+            {
+                "id": r.id,
+                "actividad_id": r.actividad_id,
+                "titulo": r.actividad.titulo if r.actividad else None,
+                "fecha_actividad": r.actividad.fecha_actividad,
+                "hora_inicio": r.actividad.hora_inicio,
+                "hora_final": r.actividad.hora_final,
+                "ubicacion": r.actividad.ubicacion,
+                "horas_asignar": r.actividad.horas_asignar,
+                "estado": r.estado.nombre_estado if r.estado else None,
+                "check_in": bool(r.check_in),
+                "check_out": bool(r.check_out),
+                "horas_registradas": r.horas_registradas or 0,
+            }
+            for r in registros
+        ],
+    }
+    
+

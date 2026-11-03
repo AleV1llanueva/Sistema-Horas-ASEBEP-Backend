@@ -60,8 +60,9 @@ def revisar_aportacion(
     db: Session = Depends(get_db),
 ):
     return revisar_aportacion_controller(
-        aportacion_id=aportacion_id, 
-        nombre_estado=data.estado, 
-        meses_aprobados=data.meses_aprobados, 
-        db=db
+        aportacion_id=aportacion_id,
+        nombre_estado=data.estado,
+        meses_aprobados=data.meses_aprobados,
+        comentario=data.comentario,
+        db=db,
     )

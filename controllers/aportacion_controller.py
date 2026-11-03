@@ -65,35 +65,86 @@ def crear_aportacion_controller(num_cuenta: str, num_referencia: str, archivo_pd
     }
 
 
-def revisar_aportacion_controller(aportacion_id:int, nombre_estado:str,meses_aprobados: int | None, db:Session):
-    estado_obj = db.query(EstadoAportacion).filter(EstadoAportacion.nombre_estado == nombre_estado).first()
+MONTO_POR_MES = 20
+
+
+def revisar_aportacion_controller(
+    aportacion_id: int,
+    nombre_estado: str,
+    meses_aprobados: int | None,
+    comentario: str | None,
+    db: Session,
+):
+    # 1. Validar el estado destino ANTES de tocar la aportación
+    estado_obj = (
+        db.query(EstadoAportacion)
+        .filter(EstadoAportacion.nombre_estado == nombre_estado)
+        .first()
+    )
     if not estado_obj:
         raise HTTPException(
             status_code=400,
-            detail=f"El estado '{nombre_estado}' no es válido"
+            detail=f"El estado '{nombre_estado}' no es válido",
         )
 
     aportacion = db.query(Aportacion).filter(Aportacion.id == aportacion_id).first()
     if not aportacion:
-        raise HTTPException(
-            status_code=404,
-            detail="Aportacion no encontrada"
-        )
+        raise HTTPException(status_code=404, detail="Aportación no encontrada")
 
-    aportacion.estado_aportacion_id=estado_obj.id
+    # 2. Guardar el estado actual ANTES de modificarlo (para revertir montos)
+    estado_anterior = aportacion.estado.nombre_estado if aportacion.estado else None
+    meses_anteriores = aportacion.meses_aprobados or 0
+
+    comentario = (comentario or "").strip()
+
+    # 3. Reglas de negocio según el estado destino
     if nombre_estado == "Aprobado":
         if not meses_aprobados or meses_aprobados <= 0:
             raise HTTPException(
                 status_code=400,
-                detail="Debe especificar una cantidad válida de meses"
+                detail="Debe especificar una cantidad válida de meses",
             )
-        aportacion.meses_aprobados = meses_aprobados
-        usuario = db.query(Becario).filter(Becario.num_cuenta == aportacion.num_cuenta).first()
-        if usuario:
-            monto = 20
-            usuario.monto_acumulado += (monto * meses_aprobados)
+        nuevo_meses = meses_aprobados
+    elif nombre_estado == "Rechazado":
+        if not comentario:
+            raise HTTPException(
+                status_code=400,
+                detail="Debe indicar el motivo del rechazo",
+            )
+        nuevo_meses = 0
+    else:  # Pendiente
+        nuevo_meses = 0
+
+    # 4. Ajustar el monto acumulado del becario con el delta real
+    usuario = (
+        db.query(Becario)
+        .filter(Becario.num_cuenta == aportacion.num_cuenta)
+        .first()
+    )
+    if usuario:
+        meses_previos_que_contaban = (
+            meses_anteriores if estado_anterior == "Aprobado" else 0
+        )
+        meses_nuevos_que_cuentan = nuevo_meses if nombre_estado == "Aprobado" else 0
+        delta = (meses_nuevos_que_cuentan - meses_previos_que_contaban) * MONTO_POR_MES
+        if delta:
+            usuario.monto_acumulado = max(0, (usuario.monto_acumulado or 0) + delta)
+
+    # 5. Persistir cambios en la aportación
+    aportacion.estado_aportacion_id = estado_obj.id
+    aportacion.meses_aprobados = nuevo_meses
+    aportacion.comentario = comentario or None
+
     db.commit()
-    return {"mensaje": f"Aportación actualizada a {nombre_estado} por {meses_aprobados} mes(es) exitosamente"}
+    db.refresh(aportacion)
+
+    return {
+        "mensaje": f"Aportación actualizada a '{nombre_estado}' exitosamente",
+        "id": aportacion.id,
+        "estado": nombre_estado,
+        "meses_aprobados": aportacion.meses_aprobados,
+        "comentario": aportacion.comentario,
+    }
 
 def mis_aportaciones_controller(num_cuenta: str, db:Session):
     aportaciones = db.query(Aportacion).filter(Aportacion.num_cuenta == num_cuenta).all()
@@ -107,8 +158,8 @@ def mis_aportaciones_controller(num_cuenta: str, db:Session):
             "ruta_pdf": a.ruta_pdf,
             "estado": a.estado.nombre_estado if a.estado else "Desconocido",
             "meses_aprobados": a.meses_aprobados,
-            "fecha_subida": a.fecha_subida
-
+            "fecha_subida": a.fecha_subida,
+            "comentario": a.comentario
         }
         for a in aportaciones
     ]
@@ -125,7 +176,8 @@ def listar_aportaciones_pendientes_controller(db: Session):
             "descripcion": a.descripcion,
             "ruta_pdf": a.ruta_pdf,
             "estado": a.estado.nombre_estado if a.estado else "Desconocido",
-            "fecha_subida": a.fecha_subida
+            "fecha_subida": a.fecha_subida,
+            "comentario": a.comentario
         }
         for a in aportaciones
     ]
