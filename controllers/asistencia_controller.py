@@ -121,10 +121,19 @@ def cancelar_inscripcion_controller(actividad_id: int, num_cuenta: str, db: Sess
     # 2. Verificar que la actividad no haya comenzado
     actividad = db.query(Actividad).filter(Actividad.id == actividad_id).first()
 
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
     tz_hn = ZoneInfo("America/Tegucigalpa")
     ahora = datetime.now(tz_hn)
+
+    #
+    # `datetime.combine` sin tzinfo devuelve una fecha *naive*, que no se
+    # puede comparar con `ahora` (aware). Se construye con la zona horaria
+    # del país, igual que el resto de controladores.
+    #
     inicio_actividad = datetime.combine(
-        actividad.fecha_actividad, actividad.hora_inicio
+        actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
     )
 
     if ahora >= inicio_actividad - timedelta(hours=2):
