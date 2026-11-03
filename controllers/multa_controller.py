@@ -1,10 +1,13 @@
 import os
 import shutil
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from models.multa import Multa
 from models.asistencia import Asistencia
 from models.usuario import Usuario
+from models.actividad import Actividad
 from models.comprobantes_multa import ComprobanteMulta
 from models.estado_aportación import EstadoAportacion
 from schemas.multa import RegistrarMultaInput, MultaResponse
@@ -59,6 +62,73 @@ def registrar_multa_controller(data: RegistrarMultaInput, db: Session) -> MultaR
     )
 
 
+def ver_inscritos_para_multa_controller(actividad_id: int, db: Session):
+    """
+    Inscritos de una actividad para registrar multas.
+
+    Incluye el nombre del estudiante y si ya tiene multa en esa
+    actividad, para que el administrador no intente duplicarla
+    (el endpoint de registro lo rechazaría con 400).
+    """
+    actividad = (
+        db.query(Actividad).filter(Actividad.id == actividad_id).first()
+    )
+    if not actividad:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+
+    filas = (
+        db.query(Asistencia, Usuario, Multa)
+        .outerjoin(Usuario, Usuario.num_cuenta == Asistencia.num_cuenta)
+        .outerjoin(
+            Multa,
+            and_(
+                Multa.num_cuenta == Asistencia.num_cuenta,
+                Multa.actividad_id == actividad_id,
+            ),
+        )
+        .filter(Asistencia.actividad_id == actividad_id)
+        .all()
+    )
+
+    inscritos = []
+
+    for asistencia, usuario, multa in filas:
+        nombre = None
+        if usuario:
+            nombre = " ".join(
+                parte
+                for parte in [
+                    usuario.primer_nombre,
+                    usuario.segundo_nombre,
+                    usuario.primer_apellido,
+                    usuario.segundo_apellido,
+                ]
+                if parte
+            )
+
+        inscritos.append(
+            {
+                "num_cuenta": asistencia.num_cuenta,
+                "nombre_estudiante": nombre,
+                "check_in": bool(asistencia.check_in),
+                "check_out": bool(asistencia.check_out),
+                "estado": (
+                    asistencia.estado.nombre_estado
+                    if asistencia.estado
+                    else "Sin estado"
+                ),
+                "multa_registrada": multa is not None,
+            }
+        )
+
+    return {
+        "actividad_id": actividad.id,
+        "titulo": actividad.titulo,
+        "fecha_actividad": actividad.fecha_actividad,
+        "inscritos": inscritos,
+    }
+
+
 def ver_multas_becario_controller(num_cuenta: str, db: Session):
     multas = db.query(Multa).filter(
         Multa.num_cuenta == num_cuenta
@@ -79,19 +149,45 @@ def ver_multas_becario_controller(num_cuenta: str, db: Session):
 
 
 def ver_todas_multas_controller(db: Session):
-    multas = db.query(Multa).all()
+    """
+    Lista todas las multas con el nombre del estudiante y el título
+    de la actividad, para que el panel administrativo no tenga que
+    cruzar datos en el cliente.
+    """
+    filas = (
+        db.query(Multa, Usuario, Actividad)
+        .outerjoin(Usuario, Usuario.num_cuenta == Multa.num_cuenta)
+        .outerjoin(Actividad, Actividad.id == Multa.actividad_id)
+        .order_by(Multa.fecha_multa.desc())
+        .all()
+    )
 
     return [
-        MultaResponse(
-            id=m.id,
-            num_cuenta=m.num_cuenta,
-            actividad_id=m.actividad_id,
-            motivo=m.motivo,
-            monto=m.monto,
-            pagada=m.pagada,
-            fecha_multa=m.fecha_multa
-        )
-        for m in multas
+        {
+            "id": m.id,
+            "num_cuenta": m.num_cuenta,
+            "actividad_id": m.actividad_id,
+            "motivo": m.motivo,
+            "monto": m.monto,
+            "pagada": m.pagada,
+            "fecha_multa": m.fecha_multa,
+            "nombre_estudiante": (
+                " ".join(
+                    parte
+                    for parte in [
+                        usuario.primer_nombre,
+                        usuario.segundo_nombre,
+                        usuario.primer_apellido,
+                        usuario.segundo_apellido,
+                    ]
+                    if parte
+                )
+                if usuario
+                else None
+            ),
+            "titulo_actividad": actividad.titulo if actividad else None,
+        }
+        for m, usuario, actividad in filas
     ]
 
 def enviar_pago_multa_controller(multa_id: int, num_cuenta: str, num_referencia: str, archivo_pdf: UploadFile, db: Session):
@@ -166,6 +262,52 @@ def ver_todos_comprobantes_multas_controller(db: Session):
         }
         for c in comprobantes
     ]
+
+
+def obtener_archivo_comprobante_multa_controller(comprobante_id: int, db: Session):
+    """
+    Devuelve el PDF del comprobante de pago de una multa.
+
+    Se valida que la ruta quede dentro de `uploads/multas` para evitar
+    que un registro manipulado sirva archivos ajenos.
+    """
+    comprobante = (
+        db.query(ComprobanteMulta)
+        .filter(ComprobanteMulta.id == comprobante_id)
+        .first()
+    )
+    if not comprobante:
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+
+    ruta_registrada = (comprobante.ruta_pdf or "").strip()
+    if not ruta_registrada:
+        raise HTTPException(
+            status_code=404, detail="El comprobante no tiene archivo registrado"
+        )
+
+    carpeta = os.path.abspath(UPLOAD_DIR)
+    ruta_absoluta = os.path.abspath(ruta_registrada)
+
+    if not os.path.isabs(ruta_registrada):
+        ruta_absoluta = os.path.abspath(
+            os.path.join(carpeta, os.path.basename(ruta_registrada))
+        )
+
+    if os.path.commonpath([carpeta, ruta_absoluta]) != carpeta:
+        raise HTTPException(
+            status_code=400, detail="La ruta del comprobante no es válida"
+        )
+
+    if not os.path.isfile(ruta_absoluta):
+        raise HTTPException(
+            status_code=404, detail="El archivo del comprobante no se encontró"
+        )
+
+    return FileResponse(
+        path=ruta_absoluta,
+        media_type="application/pdf",
+        filename=os.path.basename(ruta_absoluta),
+    )
 
 
 def ver_mis_comprobantes_multas_controller(num_cuenta: str, db: Session):
