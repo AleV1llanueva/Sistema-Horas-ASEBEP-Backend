@@ -5,7 +5,7 @@ from models.usuario import Usuario
 from models.becario import Becario
 from models.rol import Rol
 from models.carrera import Carrera
-from schemas.usuario import CrearUsuario, UsuarioResponse
+from schemas.usuario import AsignarCorreoInstitucionalInput, CrearUsuario, UsuarioResponse
 from schemas.becario import PerfilBecarioResponse
 from controllers.becario_controller import obtener_estado_beca_id
 
@@ -138,3 +138,58 @@ def actualizar_usuario_por_admin_controller(num_cuenta: str, data, db: Session):
             status_code=400,
             detail="Error de integridad en la base de datos"
         )
+
+
+def asignar_correo_institucional_controller(
+    num_cuenta: str,
+    data: AsignarCorreoInstitucionalInput,
+    db: Session,
+):
+    """
+    Asigna el correo institucional a un usuario que aún no lo tiene
+    (o corrige el existente). Las reglas del correo las valida el schema.
+    """
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    correo = data.correo_institucional
+
+    if usuario.correo_institucional == correo:
+        return {
+            "mensaje": f"El correo institucional de {num_cuenta} ya estaba asignado",
+            "num_cuenta": usuario.num_cuenta,
+            "correo_institucional": correo,
+        }
+
+    correo_existente = (
+        db.query(Usuario)
+        .filter(
+            Usuario.correo_institucional == correo,
+            Usuario.num_cuenta != num_cuenta,
+        )
+        .first()
+    )
+    if correo_existente:
+        raise HTTPException(
+            status_code=400,
+            detail="El correo institucional ya está registrado por otro usuario",
+        )
+
+    try:
+        usuario.correo_institucional = correo
+        db.commit()
+        db.refresh(usuario)
+    except IntegrityError as e:
+        db.rollback()
+        print(f"Error de integridad detallado: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail="Error de integridad en la base de datos",
+        )
+
+    return {
+        "mensaje": f"Correo institucional asignado a {num_cuenta}",
+        "num_cuenta": usuario.num_cuenta,
+        "correo_institucional": usuario.correo_institucional,
+    }

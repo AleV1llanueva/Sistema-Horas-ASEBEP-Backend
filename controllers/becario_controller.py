@@ -1,8 +1,11 @@
+from sqlalchemy.sql.operators import or_
+
 from fastapi import HTTPException, Request
 from datetime import date
+from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-
+from sqlalchemy import or_
 from sqlalchemy import and_
 
 from models.usuario import Usuario
@@ -15,6 +18,9 @@ from models.estado_aportación import EstadoAportacion
 from models.asistencia import Asistencia
 
 from schemas.becario import (
+    BecariosPaginadosResponse,
+    BecarioGeneralSinCorreoResponse,
+    DatosPersonalesSinCorreo,
     LoginResponse,
     Credenciales,
     DatosPersonales,
@@ -229,7 +235,186 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
 #     return resultado_general
 
 
-def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
+def obtener_todos_los_becarios_controller(
+    db: Session,
+    pagina: Optional[int] = None,
+    limite: Optional[int] = None,
+    busqueda: Optional[str] = None,
+    activo: Optional[bool] = None,
+) -> BecariosPaginadosResponse:
+    """
+    Devuelve los becarios registrados.
+
+    Si se envían pagina y limite, el cálculo de totales y agrupaciones
+    se realiza solo sobre el conjunto filtrado, y los totales de horas y
+    aportaciones se calculan únicamente para los becarios de la página.
+    """
+    # 1. Obtener el ID del estado "Aprobado" UNA SOLA VEZ
+    estado_aprobado = (
+        db.query(EstadoAportacion)
+        .filter(EstadoAportacion.nombre_estado == "Aprobado")
+        .first()
+    )
+    estado_aprobado_id = estado_aprobado.id if estado_aprobado else None
+
+    # 2. Consulta base con las mismas condiciones del listado original
+    consulta_base = (
+        db.query(Becario, Usuario, Carrera, Rol, EstadoBeca)
+        .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
+        .outerjoin(Carrera, Usuario.carrera_id == Carrera.id)
+        .outerjoin(Rol, Usuario.rol_id == Rol.id)
+        .outerjoin(EstadoBeca, Becario.estado_beca_id == EstadoBeca.id)
+        .filter(Usuario.correo_institucional.isnot(None))
+        .filter(Usuario.correo_institucional != "")
+        .filter(
+            and_(
+                Becario.mes_inicio.isnot(None),
+                Becario.mes_inicio != 0,
+                Becario.anio_inicio.isnot(None),
+                Becario.anio_inicio != 0,
+            )
+        )
+    )
+
+    if activo is not None:
+        consulta_base = consulta_base.filter(Usuario.active.is_(activo))
+
+    texto_busqueda = (busqueda or "").strip()
+
+    if texto_busqueda:
+        patron = f"%{texto_busqueda}%"
+        consulta_base = consulta_base.filter(
+            or_(
+                Usuario.num_cuenta.ilike(patron),
+                Usuario.primer_nombre.ilike(patron),
+                Usuario.segundo_nombre.ilike(patron),
+                Usuario.primer_apellido.ilike(patron),
+                Usuario.segundo_apellido.ilike(patron),
+                Usuario.correo_institucional.ilike(patron),
+                Carrera.nombre_carrera.ilike(patron),
+            )
+        )
+
+    consulta_base = consulta_base.order_by(Usuario.primer_apellido, Usuario.primer_nombre)
+
+    usar_paginacion = pagina is not None and limite is not None
+
+    total = consulta_base.count() if usar_paginacion else 0
+
+    if usar_paginacion:
+        resultados_base = consulta_base.offset((pagina - 1) * limite).limit(limite).all()
+    else:
+        resultados_base = consulta_base.all()
+
+    if not usar_paginacion:
+        total = len(resultados_base)
+
+    if not resultados_base:
+        return BecariosPaginadosResponse(
+            elementos=[],
+            total=total,
+            pagina=pagina or 1,
+            limite=limite or 0,
+            total_paginas=0,
+        )
+
+    # 3. Agrupar asistencias solo para los becarios consultados
+    cuentas = [becario.num_cuenta for becario, _, _, _, _ in resultados_base]
+
+    asistencias = (
+        db.query(
+            Asistencia.num_cuenta,
+            func.sum(Asistencia.horas_registradas).label("total_horas"),
+        )
+        .filter(Asistencia.num_cuenta.in_(cuentas))
+        .group_by(Asistencia.num_cuenta)
+        .all()
+    )
+    # Convertir a un diccionario para búsqueda rápida en memoria { "numero_cuenta": horas_totales }
+    mapa_asistencias = {num: total_horas or 0 for num, total_horas in asistencias}
+
+    # 4. Agrupar aportaciones aprobadas solo para los becarios consultados
+    mapa_aportaciones = {}
+    if estado_aprobado_id:
+        aportaciones = (
+            db.query(
+                Aportacion.num_cuenta,
+                func.sum(Aportacion.meses_aprobados).label("total_meses"),
+            )
+            .filter(Aportacion.estado_aportacion_id == estado_aprobado_id)
+            .filter(Aportacion.num_cuenta.in_(cuentas))
+            .group_by(Aportacion.num_cuenta)
+            .all()
+        )
+        mapa_aportaciones = {num: total_meses or 0 for num, total_meses in aportaciones}
+
+    # 5. Ensamblar la respuesta en memoria (CERO consultas a la BD dentro del bucle)
+    resultado_general = []
+
+    for becario, usuario, carrera, rol, estado_beca in resultados_base:
+        num_cuenta = becario.num_cuenta
+
+        # Nombres de relaciones
+        carrera_nombre = carrera.nombre_carrera if carrera else "Sin carrera"
+        rol_nombre = rol.nombre_rol if rol else "Sin rol"
+        estado_beca_nombre = estado_beca.nombre_estado if estado_beca else "Sin estado"
+
+        # Calcular horas (100% en memoria)
+        meses_activos = calcular_meses_activos(becario.mes_inicio, becario.anio_inicio)
+        horas_esperadas = len(meses_activos) * 20
+
+        horas_base = becario.horas_acumuladas if becario.horas_acumuladas else 0
+        horas_actividades = mapa_asistencias.get(num_cuenta, 0)
+        horas_totales = horas_base + horas_actividades
+        horas_faltantes = max(0, horas_esperadas - horas_totales)
+
+        # Calcular pagos (100% en memoria)
+        total_meses_aprobados = mapa_aportaciones.get(num_cuenta, 0)
+        total_meses_activos = len(meses_activos)
+        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
+
+        # Crear schemas Pydantic
+        credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
+        datos_personales = DatosPersonales(
+            num_cuenta=usuario.num_cuenta,
+            p_nombre=usuario.primer_nombre,
+            s_nombre=usuario.segundo_nombre,
+            p_apellido=usuario.primer_apellido,
+            s_apellido=usuario.segundo_apellido,
+            correo_personal=usuario.correo_personal,
+            correo_institucional=usuario.correo_institucional,
+            carrera=carrera_nombre,
+            telefono=usuario.telefono,
+        )
+        datos_becario = DatosBecario(
+            periodo_inicio=becario.periodo_inicio,
+            anio_inicio=becario.anio_inicio,
+            horas_totales=horas_totales,
+            horas_faltantes=horas_faltantes,
+            meses_sin_pagar=meses_sin_pagar,
+            estado_beca=estado_beca_nombre,
+        )
+
+        resultado_general.append(
+            BecarioGeneralResponse(
+                credenciales=credenciales,
+                datos_personales=datos_personales,
+                datos_becario=datos_becario,
+            )
+        )
+
+    return BecariosPaginadosResponse(
+        elementos=resultado_general,
+        total=total,
+        pagina=pagina or 1,
+        limite=limite or 0,
+        total_paginas=(
+            (total + limite - 1) // limite if usar_paginacion and limite else 0
+        ),
+    )
+
+
+def obtener_becarios_sin_correo_controller(db: Session) -> list[BecarioGeneralSinCorreoResponse]:
     # 1. Obtener el ID del estado "Aprobado" UNA SOLA VEZ
     estado_aprobado = (
         db.query(EstadoAportacion)
@@ -245,7 +430,7 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
         .outerjoin(Carrera, Usuario.carrera_id == Carrera.id)
         .outerjoin(Rol, Usuario.rol_id == Rol.id)
         .outerjoin(EstadoBeca, Becario.estado_beca_id == EstadoBeca.id)
-        .filter(Usuario.correo_institucional.isnot(None))
+        .filter(or_(Usuario.correo_institucional.is_(None), Usuario.correo_institucional == ''))
         .filter(
             and_(
                 Becario.mes_inicio.isnot(None),
@@ -313,7 +498,7 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
 
         # Crear schemas Pydantic
         credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
-        datos_personales = DatosPersonales(
+        datos_personales = DatosPersonalesSinCorreo(
             num_cuenta=usuario.num_cuenta,
             p_nombre=usuario.primer_nombre,
             s_nombre=usuario.segundo_nombre,
@@ -334,7 +519,7 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
         )
 
         resultado_general.append(
-            BecarioGeneralResponse(
+            BecarioGeneralSinCorreoResponse(
                 credenciales=credenciales,
                 datos_personales=datos_personales,
                 datos_becario=datos_becario,
@@ -342,7 +527,6 @@ def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralRes
         )
 
     return resultado_general
-
 
 def usuario_me_controller(request: Request, db: Session):
     num_cuenta_actual = getattr(request.state, "num_cuenta", None)

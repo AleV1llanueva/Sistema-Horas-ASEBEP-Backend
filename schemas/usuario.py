@@ -104,6 +104,27 @@ class ActualizarUsuarioInput(BaseModel):
         if not v.endswith(f"@{DOMINIO_PERMITO}"):
             raise ValueError("El correo debe ser institucional @unah.hn")
         return v.lower().strip()
+
+
+class AsignarCorreoInstitucionalInput(BaseModel):
+    """
+        Define qué datos recibe el endpoint cuando el admin
+        asigna (o corrige) el correo institucional de un usuario.
+    """
+    correo_institucional: str
+
+    @field_validator("correo_institucional", mode="before")
+    @classmethod
+    def validar_correo(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("El correo institucional es obligatorio")
+
+        correo = v.lower().strip()
+
+        if not correo.endswith(f"@{DOMINIO_PERMITO}"):
+            raise ValueError("El correo debe ser institucional @unah.hn")
+
+        return correo
     
     
 

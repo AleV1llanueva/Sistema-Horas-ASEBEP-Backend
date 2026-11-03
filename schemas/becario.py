@@ -17,6 +17,18 @@ class DatosPersonales(BaseModel):
     carrera: str
     telefono: Optional[str] = None
 
+
+class DatosPersonalesSinCorreo(BaseModel):
+    num_cuenta: str
+    p_nombre: str
+    s_nombre: Optional[str] = None
+    p_apellido: str
+    s_apellido: Optional[str] = None
+    correo_personal: Optional[str] = None
+    correo_institucional: Optional[str] = None
+    carrera: str
+    telefono: Optional[str] = None
+
 class DatosBecario(BaseModel):
     periodo_inicio: str
     anio_inicio: int
@@ -42,6 +54,23 @@ class BecarioGeneralResponse(BaseModel):
     credenciales: Credenciales
     datos_personales: DatosPersonales
     datos_becario: DatosBecario
+
+class BecarioGeneralSinCorreoResponse(BaseModel):
+    credenciales: Credenciales
+    datos_personales: DatosPersonalesSinCorreo
+    datos_becario: DatosBecario
+
+
+class BecariosPaginadosResponse(BaseModel):
+    """
+    Página de becarios junto con los totales necesarios
+    para construir la navegación en el cliente.
+    """
+    elementos: list[BecarioGeneralResponse]
+    total: int
+    pagina: int
+    limite: int
+    total_paginas: int
 
 class AdminInfoResponse(BaseModel):
     num_cuenta: str
