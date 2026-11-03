@@ -2,6 +2,7 @@ import os
 import shutil
 from datetime import datetime
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from models.aportacion import Aportacion
 from models.estado_aportación import EstadoAportacion
@@ -63,6 +64,53 @@ def crear_aportacion_controller(num_cuenta: str, num_referencia: str, archivo_pd
         "estado": nueva_aportacion.estado.nombre_estado if nueva_aportacion.estado else "Pendiente",
         "fecha_subida": nueva_aportacion.fecha_subida
     }
+
+
+def obtener_archivo_aportacion_controller(aportacion_id: int, db: Session):
+    """
+    Devuelve el comprobante PDF de una aportación.
+
+    La ruta guardada en la base es relativa (upload/aportaciones/...),
+    así que se reconstruye y se valida que quede dentro de la carpeta
+    permitida antes de servirla, para evitar lecturas arbitrarias.
+    """
+    aportacion = (
+        db.query(Aportacion).filter(Aportacion.id == aportacion_id).first()
+    )
+    if not aportacion:
+        raise HTTPException(status_code=404, detail="Aportación no encontrada")
+
+    ruta_registrada = (aportacion.ruta_pdf or "").strip()
+    if not ruta_registrada:
+        raise HTTPException(
+            status_code=404, detail="La aportación no tiene comprobante registrado"
+        )
+
+    carpeta = os.path.abspath(CARPETA_DESTINO)
+    ruta_absoluta = os.path.abspath(ruta_registrada)
+
+    # Si la ruta guardada es relativa, se resuelve dentro de la carpeta.
+    if not os.path.isabs(ruta_registrada):
+        ruta_absoluta = os.path.abspath(
+            os.path.join(carpeta, os.path.basename(ruta_registrada))
+        )
+
+    # Nunca servir archivos fuera del directorio de aportaciones.
+    if os.path.commonpath([carpeta, ruta_absoluta]) != carpeta:
+        raise HTTPException(
+            status_code=400, detail="La ruta del comprobante no es válida"
+        )
+
+    if not os.path.isfile(ruta_absoluta):
+        raise HTTPException(
+            status_code=404, detail="El archivo del comprobante no se encontró"
+        )
+
+    return FileResponse(
+        path=ruta_absoluta,
+        media_type="application/pdf",
+        filename=os.path.basename(ruta_absoluta),
+    )
 
 
 def revisar_aportacion_controller(aportacion_id:int, nombre_estado:str,meses_aprobados: int | None, db:Session):

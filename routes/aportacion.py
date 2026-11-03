@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request, File, Form, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from utils.database import get_db
 from schemas.aportacion import AportacionResponse, RevisionAportacionInput
@@ -6,7 +7,8 @@ from controllers.aportacion_controller import (
     crear_aportacion_controller,
     mis_aportaciones_controller,
     listar_aportaciones_pendientes_controller,
-    revisar_aportacion_controller
+    revisar_aportacion_controller,
+    obtener_archivo_aportacion_controller,
 )
 from core.security import becario, admin_aportaciones
 
@@ -49,6 +51,17 @@ def ver_aportaciones_pendientes(
     db: Session = Depends(get_db)
 ):
     return listar_aportaciones_pendientes_controller(db)
+
+# Descargar el comprobante PDF de una aportación (Administrador)
+# Se declara antes de /aportaciones/{aportacion_id} para que no la capture.
+@router.get("/aportaciones/{aportacion_id}/comprobante", tags=["Aportaciones"])
+@admin_aportaciones
+def descargar_comprobante_aportacion(
+    request: Request,
+    aportacion_id: int,
+    db: Session = Depends(get_db),
+):
+    return obtener_archivo_aportacion_controller(aportacion_id, db)
 
 # Aprobar o rechazar aportación (Administrador)
 @router.put("/aportaciones/{aportacion_id}", tags=["Aportaciones"])
