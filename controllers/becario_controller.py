@@ -32,6 +32,16 @@ from schemas.becario import (
 
 
 def calcular_meses_activos(mes_inicio: int, anio_inicio: int) -> list:
+    """
+    Devuelve los meses que el becario ha estado activo.
+
+    Los registros migrados pueden tener mes o año nulos: en ese caso
+    no hay periodo válido y se devuelve una lista vacía en lugar de
+    fallar al iterar.
+    """
+    if not mes_inicio or not anio_inicio:
+        return []
+
     fecha_actual = date.today()
     meses_activos = []
     anio_ingreso = anio_inicio
@@ -110,6 +120,9 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     )
 
     total_meses_aprobados = 0
+    total_meses_activos = len(meses_activos)
+    meses_sin_pagar = total_meses_activos
+
     if estado_aprobado:
         aportaciones_aprobadas = (
             db.query(Aportacion)
@@ -124,13 +137,14 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
             (a.meses_aprobados or 0) for a in aportaciones_aprobadas
         )
 
-        # Sumar el monto acumulado
-        meses_aportacion_anteriores = becario.monto_acumulado / 20
+        # Sumar los meses cubiertos antes del sistema.
+        # `monto_acumulado` guarda meses, no dinero, así que se suma
+        # como entero para no producir fracciones en `meses_sin_pagar`.
+        meses_aportacion_anteriores = int(becario.monto_acumulado or 0)
 
         total_meses_aprobados = total_meses_aprobados + meses_aportacion_anteriores
 
-        total_meses_activos = len(meses_activos)
-        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
+        meses_sin_pagar = max(0, int(total_meses_activos - total_meses_aprobados))
 
     # 4. Retornar las estructuras listas
     credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
@@ -148,8 +162,10 @@ def _construir_detalle_becario(usuario: Usuario, becario: Becario, db: Session):
     datos_becario = DatosBecario(
         periodo_inicio=becario.periodo_inicio,
         anio_inicio=becario.anio_inicio,
+        mes_inicio=becario.mes_inicio,
         horas_totales=horas_totales,
         horas_faltantes=horas_faltantes,
+        monto_acumulado=int(becario.monto_acumulado or 0),
         meses_sin_pagar=meses_sin_pagar,
         estado_beca=estado_beca_nombre,
     )
@@ -370,8 +386,13 @@ def obtener_todos_los_becarios_controller(
 
         # Calcular pagos (100% en memoria)
         total_meses_aprobados = mapa_aportaciones.get(num_cuenta, 0)
+
+        # Coincide con _construir_detalle_becario: los meses cubiertos
+        # antes del sistema también cuentan como aportados y son enteros.
+        total_meses_aprobados += int(becario.monto_acumulado or 0)
+
         total_meses_activos = len(meses_activos)
-        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
+        meses_sin_pagar = max(0, int(total_meses_activos - total_meses_aprobados))
 
         # Crear schemas Pydantic
         credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
@@ -389,8 +410,10 @@ def obtener_todos_los_becarios_controller(
         datos_becario = DatosBecario(
             periodo_inicio=becario.periodo_inicio,
             anio_inicio=becario.anio_inicio,
+            mes_inicio=becario.mes_inicio,
             horas_totales=horas_totales,
             horas_faltantes=horas_faltantes,
+            monto_acumulado=int(becario.monto_acumulado or 0),
             meses_sin_pagar=meses_sin_pagar,
             estado_beca=estado_beca_nombre,
         )
@@ -493,8 +516,13 @@ def obtener_becarios_sin_correo_controller(db: Session) -> list[BecarioGeneralSi
 
         # Calcular pagos (100% en memoria)
         total_meses_aprobados = mapa_aportaciones.get(num_cuenta, 0)
+
+        # Coincide con _construir_detalle_becario: los meses cubiertos
+        # antes del sistema también cuentan como aportados y son enteros.
+        total_meses_aprobados += int(becario.monto_acumulado or 0)
+
         total_meses_activos = len(meses_activos)
-        meses_sin_pagar = max(0, total_meses_activos - total_meses_aprobados)
+        meses_sin_pagar = max(0, int(total_meses_activos - total_meses_aprobados))
 
         # Crear schemas Pydantic
         credenciales = Credenciales(rol=rol_nombre, active=usuario.active)
@@ -512,8 +540,10 @@ def obtener_becarios_sin_correo_controller(db: Session) -> list[BecarioGeneralSi
         datos_becario = DatosBecario(
             periodo_inicio=becario.periodo_inicio,
             anio_inicio=becario.anio_inicio,
+            mes_inicio=becario.mes_inicio,
             horas_totales=horas_totales,
             horas_faltantes=horas_faltantes,
+            monto_acumulado=int(becario.monto_acumulado or 0),
             meses_sin_pagar=meses_sin_pagar,
             estado_beca=estado_beca_nombre,
         )
@@ -629,6 +659,63 @@ def reactivar_becario_controller(num_cuenta: str, db: Session):
 def actualizar_becario_controller(
     num_cuenta: str, datos: BecarioUpdateInput, db: Session
 ):
+    actualizar_perfil_becario(num_cuenta, datos, db)
+    return obtener_datos_becario(num_cuenta, db)
+
+
+def obtener_datos_becario(
+    num_cuenta: str,
+    db: Session,
+) -> DatosBecario:
+    becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
+    if not becario:
+        raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
+
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    _, _, datos_becario = _construir_detalle_becario(usuario, becario, db)
+    return datos_becario
+
+
+def actualizar_becario_por_admin_controller(
+    num_cuenta: str,
+    datos: BecarioUpdateInput,
+    db: Session,
+) -> DatosBecario:
+    """
+    Punto de entrada para los administradores generales.
+
+    Mantiene el mismo cálculo de respuesta que usan las pantallas
+    administrativas y registra en el log cada cambio de horas,
+    aportaciones o periodo de ingreso, porque corresponden a datos
+    previos a la migración al sistema.
+    """
+    actualizar_perfil_becario(num_cuenta, datos, db)
+
+    cambios = {
+        campo: valor
+        for campo, valor in {
+            "horas_acumuladas": datos.horas_acumuladas,
+            "meses_aportados": datos.monto_acumulado,
+            "anio_inicio": datos.anio_inicio,
+            "mes_inicio": datos.mes_inicio,
+        }.items()
+        if valor is not None
+    }
+
+    if cambios:
+        print(f"[admin] Ajuste manual del becario {num_cuenta}: {cambios}")
+
+    return obtener_datos_becario(num_cuenta, db)
+
+
+def actualizar_perfil_becario(
+    num_cuenta: str,
+    datos: BecarioUpdateInput,
+    db: Session,
+) -> None:
     becario = db.query(Becario).filter(Becario.num_cuenta == num_cuenta).first()
     if not becario:
         raise HTTPException(status_code=404, detail="Perfil de becario no encontrado")
@@ -668,6 +755,3 @@ def actualizar_becario_controller(
     db.refresh(becario)
 
     verificar_y_finalizar_por_fecha(becario, db)
-
-    _, _, datos_becario = _construir_detalle_becario(usuario, becario, db)
-    return datos_becario

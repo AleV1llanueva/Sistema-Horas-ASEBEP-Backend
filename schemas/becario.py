@@ -32,8 +32,12 @@ class DatosPersonalesSinCorreo(BaseModel):
 class DatosBecario(BaseModel):
     periodo_inicio: str
     anio_inicio: int
+    # Mes de ingreso (1-12). Los registros antiguos pueden no tenerlo.
+    mes_inicio: Optional[int] = None
     horas_totales: int
     horas_faltantes: int
+    # Meses de aportación cubiertos antes del sistema (no son colones).
+    monto_acumulado: int = 0
     meses_sin_pagar: int
     estado_beca: str
 
@@ -85,6 +89,15 @@ class AdminInfoResponse(BaseModel):
         from_attributes = True
 
 class BecarioUpdateInput(BaseModel):
+    """
+    Ajustes del perfil del becario.
+
+    - horas_acumuladas: horas cubiertas por datos previos al sistema.
+    - monto_acumulado: meses de aportación cubiertos por datos previos
+      (el sistema no maneja colones en este campo).
+    - anio_inicio / mes_inicio: mes desde el que se calculan las horas
+      y aportaciones esperadas.
+    """
     anio_inicio: Optional[int] = None
     mes_inicio: Optional[int] = None
     horas_acumuladas: Optional[int] = None
@@ -104,4 +117,13 @@ class BecarioUpdateInput(BaseModel):
     def validar_mes(cls, v):
         if v is not None and (v < 1 or v > 12):
             raise ValueError("El mes debe estar entre 1 y 12")
+        return v
+
+    @field_validator("anio_inicio")
+    @classmethod
+    def validar_anio(cls, v):
+        if v is not None and (v < 2000 or v > date.today().year):
+            raise ValueError(
+                f"El año de ingreso debe estar entre 2000 y {date.today().year}"
+            )
         return v

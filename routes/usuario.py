@@ -11,6 +11,7 @@ from controllers.usuario_controller import (
     asignar_correo_institucional_controller,
 )
 from controllers.becario_controller import (
+    actualizar_becario_por_admin_controller,
     obtener_becarios_sin_correo_controller,
     user_controller,
     obtener_todos_los_becarios_controller,
@@ -110,6 +111,23 @@ def desactivar_becario(request: Request, num_cuenta: str, db: Session = Depends(
 @admin_general
 def reactivar_becario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
     return reactivar_becario_controller(num_cuenta, db)
+
+# Ajustes de horas, aportaciones y periodo de ingreso.
+# Exclusivo del administrador general: los datos previos al sistema
+# solo pueden corregirse desde este rol.
+@router.patch(
+    "/becarios/{num_cuenta}/datos-academicos",
+    response_model=DatosBecario,
+    tags=["Becarios"],
+)
+@admin_general
+def actualizar_datos_academicos_becario(
+    request: Request,
+    num_cuenta: str,
+    datos: BecarioUpdateInput,
+    db: Session = Depends(get_db),
+):
+    return actualizar_becario_por_admin_controller(num_cuenta, datos, db)
 
 #Editar perfil becario
 @router.put("/becarios/{num_cuenta}", response_model=DatosBecario, tags=["Becarios"])
