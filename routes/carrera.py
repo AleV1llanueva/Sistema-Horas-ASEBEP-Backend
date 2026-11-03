@@ -5,6 +5,7 @@ from schemas.carrera import CarreraInput, CarreraResponse
 from controllers.carrera_controller import (
     crear_carrera_controller,
     obtener_carreras_controller,
+    obtener_carreras_activas_controller,
     obtener_carrera_por_id_controller,
     actualizar_carrera_controller,
     desactivar_carrera_controller,
@@ -25,6 +26,18 @@ def crear_carrera(request: Request, carrera: CarreraInput, db: Session = Depends
 @admin_general
 def obtener_carreras(request: Request, db: Session = Depends(get_db)):
     return obtener_carreras_controller(db)
+
+
+# Catálogo para el alta de estudiantes (solo carreras activas).
+# Se declara antes de /carreras/{carrera_id} para que no la capture.
+@router.get(
+    "/carreras/catalogo",
+    response_model=list[CarreraResponse],
+    tags=["Carreras"],
+)
+@admin_general
+def obtener_catalogo_carreras(request: Request, db: Session = Depends(get_db)):
+    return obtener_carreras_activas_controller(db)
 
 
 @router.get("/carreras/{carrera_id}", response_model=CarreraResponse, tags=["Carreras"])

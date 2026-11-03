@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from models.usuario import Usuario 
 from models.becario import Becario
@@ -9,11 +10,41 @@ from schemas.usuario import AsignarCorreoInstitucionalInput, CrearUsuario, Usuar
 from schemas.becario import PerfilBecarioResponse
 from controllers.becario_controller import obtener_estado_beca_id
 
-def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse:
-    #Verificar que el rol existe
-    rol = db.query(Rol).filter(Rol.id == data.rol_id).first()
+# Rol que se asigna automáticamente a los becarios creados desde el panel.
+ROL_BECARIO = "Becario"
+
+def obtener_rol_becario(db: Session) -> Rol:
+    """
+    Devuelve el rol que corresponde a los estudiantes becarios.
+
+    Se busca por nombre en lugar de asumir un identificador fijo,
+    para que el alta funcione aunque la tabla de roles no empiece en 1.
+    """
+    rol = (
+        db.query(Rol)
+        .filter(func.lower(Rol.nombre_rol) == ROL_BECARIO.lower())
+        .first()
+    )
+
     if not rol:
-        raise HTTPException(status_code=404, detail="Rol no encontrado")
+        raise HTTPException(
+            status_code=500,
+            detail=f"El rol '{ROL_BECARIO}' no está configurado en el sistema",
+        )
+
+    return rol
+
+
+def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse:
+    # El rol de un estudiante siempre es el de becario.
+    rol_becario = obtener_rol_becario(db)
+
+    # Si el cliente envía un rol, debe coincidir con el de becario.
+    if data.rol_id is not None and data.rol_id != rol_becario.id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El rol asignado debe ser '{rol_becario.nombre_rol}'",
+        )
 
     #Verificar que la carrera que existe
     carrera = db.query(Carrera).filter(Carrera.id == data.carrera_id).first()
@@ -42,7 +73,7 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
             correo_personal=data.correo_personal,
             telefono=data.telefono,
             carrera_id=data.carrera_id,
-            rol_id=data.rol_id,
+            rol_id=rol_becario.id,
             password_hash=None,
             active=False
         )

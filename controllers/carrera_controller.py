@@ -24,6 +24,16 @@ def crear_carrera_controller(carrera:  CarreraInput, db:Session):
 def obtener_carreras_controller(db:Session):
     return db.query(Carrera).all()
 
+
+def obtener_carreras_activas_controller(db: Session):
+    """Carreras disponibles para asignar a un estudiante nuevo."""
+    return (
+        db.query(Carrera)
+        .filter(Carrera.activo == True)  # noqa: E712
+        .order_by(Carrera.nombre_carrera)
+        .all()
+    )
+
 def obtener_carrera_por_id_controller(carrera_id: int, db:Session):
     carrera = db.query(Carrera).filter(
         Carrera.id == carrera_id

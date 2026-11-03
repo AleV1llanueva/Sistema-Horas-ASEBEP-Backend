@@ -23,7 +23,8 @@ class CrearUsuario(BaseModel):
     correo_personal: str
     telefono: str
     carrera_id: int
-    rol_id: int
+    # Opcional: si no se envía, el backend asigna el rol de becario.
+    rol_id: Optional[int] = None
     mes_inicio: int
     anio_inicio: int
 
