@@ -98,6 +98,13 @@ def revisar_aportacion_controller(
     comentario = (comentario or "").strip()
 
     # 3. Reglas de negocio según el estado destino
+    if nombre_estado in ("Aprobado", "Rechazado") and not comentario:
+        # La justificación es obligatoria tanto al aprobar como al rechazar.
+        raise HTTPException(
+            status_code=400,
+            detail="Debe indicar la justificación de la decisión",
+        )
+
     if nombre_estado == "Aprobado":
         if not meses_aprobados or meses_aprobados <= 0:
             raise HTTPException(
@@ -106,11 +113,6 @@ def revisar_aportacion_controller(
             )
         nuevo_meses = meses_aprobados
     elif nombre_estado == "Rechazado":
-        if not comentario:
-            raise HTTPException(
-                status_code=400,
-                detail="Debe indicar el motivo del rechazo",
-            )
         nuevo_meses = 0
     else:  # Pendiente
         nuevo_meses = 0

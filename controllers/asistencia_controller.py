@@ -21,7 +21,42 @@ from zoneinfo import ZoneInfo
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-QR_TTL_MIN = 20
+
+# Ventanas de marcación respecto al horario de la actividad.
+QR_MARGEN_ANTES_MIN = 60
+QR_MARGEN_DESPUES_MIN = 60
+
+
+def _horario_actividad(actividad):
+    tz_hn = ZoneInfo("America/Tegucigalpa")
+    inicio = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
+    )
+    fin = datetime.combine(
+        actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
+    )
+    return inicio, fin
+
+
+def _ventana_qr(actividad, tipo: str):
+    """
+    Entrada: desde una hora antes del inicio hasta el final de la actividad.
+    Salida: desde el inicio hasta una hora después del final.
+    """
+    inicio, fin = _horario_actividad(actividad)
+
+    if tipo == "entrada":
+        return (
+            inicio - timedelta(minutes=QR_MARGEN_ANTES_MIN),
+            fin,
+            f"{QR_MARGEN_ANTES_MIN} minutos antes del inicio",
+        )
+
+    return (
+        inicio,
+        fin + timedelta(minutes=QR_MARGEN_DESPUES_MIN),
+        "el inicio de la actividad",
+    )
 
 
 def inscribirse_controller(data: InscripcionInput, num_cuenta: str, db: Session):
@@ -216,21 +251,18 @@ def _verificar_token_qr(token: str, tipo: str, db) -> dict:
     tz_hn = ZoneInfo("America/Tegucigalpa")
     ahora = datetime.now(tz_hn)
 
-    if tipo == "entrada":
-        referencia_tiempo = datetime.combine(
-            actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
-        )
-        hora_mostrar = actividad.hora_inicio
-    else:
-        referencia_tiempo = datetime.combine(
-            actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
-        )
-        hora_mostrar = actividad.hora_final
+    vigente_desde, vigente_hasta, texto_inicio = _ventana_qr(actividad, tipo)
 
-    if ahora < referencia_tiempo:
+    if ahora < vigente_desde:
         raise HTTPException(
             status_code=400,
-            detail=f"El QR de {tipo} solo es válido a partir de las {hora_mostrar}",
+            detail=f"El QR de {tipo} solo es válido desde {texto_inicio}",
+        )
+
+    if ahora > vigente_hasta:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El QR de {tipo} ya expiró",
         )
 
     return payload
@@ -264,12 +296,8 @@ def generar_qr_entrada_controller(actividad_id: int, db) -> bytes:
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    tz_hn = ZoneInfo("America/Tegucigalpa")
-
-    inicio = datetime.combine(
-        actividad.fecha_actividad, actividad.hora_inicio, tzinfo=tz_hn
-    )
-    exp_time = inicio + timedelta(minutes=QR_TTL_MIN)
+    # El QR vive toda la ventana, no solo veinte minutos.
+    _, exp_time, _ = _ventana_qr(actividad, "entrada")
 
     # generar token JWT para el QR
     token = jwt.encode(
@@ -311,11 +339,8 @@ def generar_qr_salida_controller(actividad_id: int, db) -> bytes:
     if not actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
 
-    tz_hn = ZoneInfo("America/Tegucigalpa")
-    fin = datetime.combine(
-        actividad.fecha_actividad, actividad.hora_final, tzinfo=tz_hn
-    )
-    exp_fin = fin + timedelta(minutes=QR_TTL_MIN)
+    # El QR vive toda la ventana, no solo veinte minutos.
+    _, exp_fin, _ = _ventana_qr(actividad, "salida")
 
     # generar token JWT para el QR
     token = jwt.encode(
