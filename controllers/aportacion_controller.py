@@ -1,6 +1,7 @@
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -10,6 +11,10 @@ from models.becario import Becario
 
 
 CARPETA_DESTINO = "uploads/aportaciones"
+
+# Carpeta base del proyecto. Las rutas guardadas en la base son relativas
+# a ella (uploads/aportaciones/...), sin importar el directorio de trabajo.
+DIRECTORIO_PROYECTO = Path(__file__).resolve().parents[1]
 
 def crear_aportacion_controller(num_cuenta: str, num_referencia: str, archivo_pdf: UploadFile, descripcion: str,db:Session):
     if not archivo_pdf.filename.lower().endswith(".pdf"):
@@ -73,9 +78,10 @@ def obtener_archivo_aportacion_controller(aportacion_id: int, db: Session):
     """
     Devuelve el comprobante PDF de una aportación.
 
-    La ruta guardada en la base es relativa (upload/aportaciones/...),
-    así que se reconstruye y se valida que quede dentro de la carpeta
-    permitida antes de servirla, para evitar lecturas arbitrarias.
+    La ruta guardada en la base es relativa al proyecto
+    (uploads/aportaciones/...), así que se resuelve desde la raíz del
+    proyecto y se valida que quede dentro de la carpeta permitida antes
+    de servirla, para evitar lecturas arbitrarias.
     """
     aportacion = (
         db.query(Aportacion).filter(Aportacion.id == aportacion_id).first()
@@ -89,13 +95,20 @@ def obtener_archivo_aportacion_controller(aportacion_id: int, db: Session):
             status_code=404, detail="La aportación no tiene comprobante registrado"
         )
 
-    carpeta = os.path.abspath(CARPETA_DESTINO)
-    ruta_absoluta = os.path.abspath(ruta_registrada)
+    carpeta = os.path.join(str(DIRECTORIO_PROYECTO), CARPETA_DESTINO)
 
-    # Si la ruta guardada es relativa, se resuelve dentro de la carpeta.
-    if not os.path.isabs(ruta_registrada):
+    # Las rutas guardadas incluyen sus carpetas (uploads/aportaciones/x.pdf),
+    # así que se resuelven completas desde la raíz del proyecto. Si la fila
+    # guardó solo el nombre del archivo, se antepone la carpeta destino.
+    if os.path.isabs(ruta_registrada):
+        ruta_absoluta = os.path.abspath(ruta_registrada)
+    elif os.path.dirname(ruta_registrada):
         ruta_absoluta = os.path.abspath(
-            os.path.join(carpeta, os.path.basename(ruta_registrada))
+            os.path.join(str(DIRECTORIO_PROYECTO), ruta_registrada)
+        )
+    else:
+        ruta_absoluta = os.path.abspath(
+            os.path.join(carpeta, ruta_registrada)
         )
 
     # Nunca servir archivos fuera del directorio de aportaciones.
