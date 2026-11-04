@@ -90,18 +90,22 @@ def crear_actividad_controller(
     )
 
 
-def ver_actividades_controller(db: Session):
+def ver_actividades_controller(db: Session, incluir_pasadas: bool = False):
 
     hoy = datetime.now(ZoneInfo("America/Tegucigalpa")).date()
 
-    actividades = (
+    consulta = (
         db.query(Actividad)
         .join(EstadoActividad)
-        .filter(
+    )
+
+    # Por defecto solo se ven las actividades de hoy en adelante.
+    if not incluir_pasadas:
+        consulta = consulta.filter(
             Actividad.fecha_actividad >= hoy,
         )
-        .all()
-    )
+
+    actividades = consulta.all()
 
     return [
         ActividadResponse(

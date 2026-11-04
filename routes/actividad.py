@@ -24,8 +24,12 @@ def crear_actividad(request: Request, data: CrearActividadInput, db: Session = D
 #Ver Actividades
 @router.get("/actividades", response_model=List[ActividadResponse], tags=["Actividades"])
 @cualquier_usuario
-def ver_actividades(request: Request, db: Session = Depends(get_db)):
-    return ver_actividades_controller(db)
+def ver_actividades(
+    request: Request,
+    incluir_pasadas: bool = False,
+    db: Session = Depends(get_db),
+):
+    return ver_actividades_controller(db, incluir_pasadas)
 
 #Editar Actividad
 @router.put("/actividades/{actividad_id}", tags=["Actividades"])
