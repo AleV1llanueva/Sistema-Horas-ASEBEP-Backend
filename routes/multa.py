@@ -2,16 +2,23 @@ from fastapi import APIRouter, Depends, Request, File, Form, UploadFile
 from sqlalchemy.orm import Session
 from typing import List
 from utils.database import get_db
-from schemas.multa import RegistrarMultaInput, MultaResponse
+from schemas.multa import (
+    RegistrarMultaInput,
+    MultaResponse,
+    MultaAdminResponse,
+    ActividadInscritosResponse,
+)
 from schemas.aportacion import RevisionAportacionInput
 from controllers.multa_controller import (
     registrar_multa_controller,
+    ver_inscritos_para_multa_controller,
     ver_multas_becario_controller,
     ver_todas_multas_controller,
     enviar_pago_multa_controller,
     revisar_pago_multa_controller,
     ver_todos_comprobantes_multas_controller,
-    ver_mis_comprobantes_multas_controller
+    ver_mis_comprobantes_multas_controller,
+    obtener_archivo_comprobante_multa_controller,
 )
 from core.security import admin_aportaciones, becario, admin_general, admin_horas
 
@@ -30,8 +37,23 @@ def ver_mis_multas(request: Request, db: Session = Depends(get_db)):
     num_cuenta = request.state.num_cuenta
     return ver_multas_becario_controller(num_cuenta, db)
 
+#Inscritos de una actividad (para elegir a quien multar)
+# Se declara antes de /multas/{multa_id} para que no la capture.
+@router.get(
+    "/multas/actividades/{actividad_id}/inscritos",
+    response_model=ActividadInscritosResponse,
+    tags=["Multas"],
+)
+@admin_aportaciones
+def ver_inscritos_para_multa(
+    request: Request,
+    actividad_id: int,
+    db: Session = Depends(get_db),
+):
+    return ver_inscritos_para_multa_controller(actividad_id, db)
+
 #Ver lista de Multas Admiin
-@router.get("/multas", response_model=List[MultaResponse], tags=["Multas"])
+@router.get("/multas", response_model=List[MultaAdminResponse], tags=["Multas"])
 @admin_aportaciones
 def ver_todas_multas(request: Request, db: Session = Depends(get_db)):
     return ver_todas_multas_controller(db)
@@ -65,6 +87,17 @@ def revisar_pago_multa(
 @admin_horas
 def ver_todos_comprobantes(request: Request, db: Session = Depends(get_db)):
     return ver_todos_comprobantes_multas_controller(db)
+
+#descargar el PDF del comprobante de una multa (Administrador)
+# Se declara antes de /multas/{multa_id} para que no la capture.
+@router.get("/multas/comprobantes/{comprobante_id}/archivo", tags=["Multas"])
+@admin_horas
+def descargar_comprobante_multa(
+    request: Request,
+    comprobante_id: int,
+    db: Session = Depends(get_db),
+):
+    return obtener_archivo_comprobante_multa_controller(comprobante_id, db)
 
 #ver todos mis comprobantes como becario
 @router.get("/becario/multas/comprobantes", tags=["Multas"])
