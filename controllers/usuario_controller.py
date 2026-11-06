@@ -1,17 +1,35 @@
 from fastapi import HTTPException
+from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from models.usuario import Usuario 
 from models.becario import Becario
 from models.rol import Rol
 from models.carrera import Carrera
+from models.asistencia import Asistencia
+from models.aportacion import Aportacion
+from models.multa import Multa
+from models.comprobantes_multa import ComprobanteMulta
+from models.pagos import Pago
+from models.pin_activacion import PinActivacion
+from models.pin_intentos import PinIntentos
 from schemas.usuario import AsignarCorreoInstitucionalInput, CrearUsuario, UsuarioResponse
 from schemas.becario import PerfilBecarioResponse
 from controllers.becario_controller import obtener_estado_beca_id
 
 # Rol que se asigna automáticamente a los becarios creados desde el panel.
 ROL_BECARIO = "Becario"
+
+# Tablas que guardan datos del estudiante y qué se informa cuando lo bloquean.
+# Sin referencias en ninguna, el estudiante se puede borrar del todo.
+REFERENCIAS_DEL_ESTUDIANTE = [
+    (Asistencia, "asistencias", "inscripciones a actividades"),
+    (Aportacion, "aportaciones", "aportaciones registradas"),
+    (Multa, "multas", "multas registradas"),
+    (ComprobanteMulta, "comprobantes_multas", "comprobantes de multa"),
+    (Pago, "pagos", "pagos registrados"),
+]
 
 def obtener_rol_becario(db: Session) -> Rol:
     """
@@ -35,6 +53,46 @@ def obtener_rol_becario(db: Session) -> Rol:
     return rol
 
 
+def detalle_duplicado(campo: str, usuario: Optional[Usuario]) -> dict:
+    """
+    Indica qué dato impedía crear al estudiante y a quién pertenece.
+
+    La interfaz usa `num_cuenta` para ofrecer un enlace al registro
+    existente, por eso se envía como parte del detalle.
+    """
+    if usuario is None:
+        # El registro se liberó entre el intento y la consulta.
+        return {
+            "mensaje": (
+                "El número de cuenta ya está registrado"
+                if campo == "num_cuenta"
+                else "El correo institucional ya está registrado"
+            ),
+            "campo": campo,
+        }
+
+    return {
+        "mensaje": (
+            "El número de cuenta ya está registrado"
+            if campo == "num_cuenta"
+            else "El correo institucional ya está registrado"
+        ),
+        "campo": campo,
+        "num_cuenta": usuario.num_cuenta,
+        "nombre_completo": " ".join(
+            parte
+            for parte in (
+                usuario.primer_nombre,
+                usuario.segundo_nombre,
+                usuario.primer_apellido,
+                usuario.segundo_apellido,
+            )
+            if parte
+        ),
+        "correo_institucional": usuario.correo_institucional,
+    }
+
+
 def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse:
     # El rol de un estudiante siempre es el de becario.
     rol_becario = obtener_rol_becario(db)
@@ -54,12 +112,18 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
     #Verificar que el número de cuenta no exista
     usuario_existente = db.query(Usuario).filter(Usuario.num_cuenta == data.num_cuenta).first()
     if usuario_existente:
-        raise HTTPException(status_code=400, detail="El número de cuenta ya está registrado")
+        raise HTTPException(
+            status_code=409,
+            detail=detalle_duplicado("num_cuenta", usuario_existente),
+        )
 
     #Verificar que el correo no exista ya 
     correo_existente = db.query(Usuario).filter(Usuario.correo_institucional == data.correo_institucional).first()
     if correo_existente:
-        raise HTTPException(status_code=400, detail="El correo instituciona ya está registrado")
+        raise HTTPException(
+            status_code=409,
+            detail=detalle_duplicado("correo_institucional", correo_existente),
+        )
 
     try:
         #Crear usuario sin contraseña y sin activar
@@ -106,6 +170,23 @@ def crear_usuario_controller(data: CrearUsuario, db: Session) -> UsuarioResponse
 
     except Exception as e:
         db.rollback()
+        # La cuenta o el correo pueden repetirse entre el chequeo y el commit.
+        if es_error_de_duplicado(e):
+            repetido = db.query(Usuario).filter(
+                or_(
+                    Usuario.num_cuenta == data.num_cuenta,
+                    Usuario.correo_institucional == data.correo_institucional,
+                )
+            ).first()
+            campo = (
+                "num_cuenta"
+                if repetido and repetido.num_cuenta == data.num_cuenta
+                else "correo_institucional"
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=detalle_duplicado(campo, repetido),
+            )
         raise HTTPException(status_code=500, detail=f"Error al registrar el usuario y su perfil")
 
     return UsuarioResponse(
@@ -223,4 +304,107 @@ def asignar_correo_institucional_controller(
         "mensaje": f"Correo institucional asignado a {num_cuenta}",
         "num_cuenta": usuario.num_cuenta,
         "correo_institucional": usuario.correo_institucional,
+    }
+
+
+def consultar_disponibilidad_controller(
+    db: Session,
+    num_cuenta: Optional[str] = None,
+    correo_institucional: Optional[str] = None,
+) -> dict:
+    """
+    Indica si el dato ya pertenece a un usuario registrado.
+
+    Se usa en el alta para avisar mientras el administrador escribe,
+    antes de completar el resto del formulario. No devuelve datos
+    del registro existente: el detalle con el nombre y el enlace al
+    estudiante lo entrega el error 409 al intentar guardar.
+    """
+    consulta = db.query(Usuario)
+
+    if num_cuenta:
+        consulta = consulta.filter(Usuario.num_cuenta == num_cuenta.strip())
+    else:
+        consulta = consulta.filter(
+            Usuario.correo_institucional == correo_institucional.strip().lower()
+        )
+
+    return {"disponible": consulta.first() is None}
+
+
+def contar_referencias(num_cuenta: str, db: Session) -> dict:
+    """Cuenta los registros de otras tablas que apuntan al estudiante."""
+    return {
+        tabla: db.query(modelo).filter(modelo.num_cuenta == num_cuenta).count()
+        for modelo, tabla, _ in REFERENCIAS_DEL_ESTUDIANTE
+    }
+
+
+def eliminar_estudiante_controller(num_cuenta: str, db: Session):
+    """
+    Borra al estudiante y su perfil de becario definitivamente.
+
+    No borra datos históricos: si el estudiante aparece en asistencias,
+    aportaciones, multas o pagos, se rechaza indicando cuáles lo usan.
+    """
+    usuario = db.query(Usuario).filter(Usuario.num_cuenta == num_cuenta).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    referencias = {
+        tabla: total
+        for tabla, total in contar_referencias(num_cuenta, db).items()
+        if total > 0
+    }
+
+    if referencias:
+        nombres = [
+            descripcion
+            for _, tabla, descripcion in REFERENCIAS_DEL_ESTUDIANTE
+            if tabla in referencias
+        ]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "mensaje": (
+                    "El estudiante tiene {0} y no puede eliminarse".format(
+                        ", ".join(nombres)
+                    )
+                ),
+                "campo": "referencias",
+                "num_cuenta": num_cuenta,
+                "referencias": referencias,
+            },
+        )
+
+    try:
+        # Los PIN dependen del correo institucional, no de la cuenta.
+        if usuario.correo_institucional:
+            db.query(PinActivacion).filter(
+                PinActivacion.correo == usuario.correo_institucional
+            ).delete(synchronize_session=False)
+            db.query(PinIntentos).filter(
+                PinIntentos.correo == usuario.correo_institucional
+            ).delete(synchronize_session=False)
+
+        # El perfil se borra antes porque apunta al usuario.
+        perfiles = (
+            db.query(Becario)
+            .filter(Becario.num_cuenta == num_cuenta)
+            .delete(synchronize_session=False)
+        )
+        db.delete(usuario)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        print(f"Error al eliminar al estudiante {num_cuenta}: {e}")
+        raise HTTPException(
+            status_code=409,
+            detail="El estudiante todavía tiene registros relacionados",
+        )
+
+    return {
+        "mensaje": f"Estudiante {num_cuenta} eliminado",
+        "num_cuenta": num_cuenta,
+        "eliminados": {"perfiles_becarios": perfiles},
     }

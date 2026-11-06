@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from utils.database import get_db
 
@@ -9,6 +9,8 @@ from controllers.usuario_controller import (
     crear_usuario_controller,
     actualizar_usuario_por_admin_controller,
     asignar_correo_institucional_controller,
+    consultar_disponibilidad_controller,
+    eliminar_estudiante_controller,
 )
 from controllers.becario_controller import (
     actualizar_becario_por_admin_controller,
@@ -59,6 +61,29 @@ def obtener_todos_los_becarios(
 def obtener_becarios_sin_correo(request: Request, db: Session = Depends(get_db)):
     return obtener_becarios_sin_correo_controller(db)
 
+# Comprobación previa del alta: indica si la cuenta o el correo ya existen.
+# Solo devuelve un booleano, sin datos personales.
+# Se declara antes de /usuarios/{num_cuenta} para que no la capture.
+@router.get("/usuarios/disponibilidad", tags=["Usuarios"])
+@solo_administradores
+def consultar_disponibilidad(
+    request: Request,
+    num_cuenta: str | None = Query(default=None),
+    correo_institucional: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    if not num_cuenta and not correo_institucional:
+        raise HTTPException(
+            status_code=400,
+            detail="Indica el número de cuenta o el correo institucional",
+        )
+
+    return consultar_disponibilidad_controller(
+        db,
+        num_cuenta=num_cuenta,
+        correo_institucional=correo_institucional,
+    )
+
 #Ver perfil becario propio
 @router.get("/usuarios/me", tags=["Usuarios"])
 @cualquier_usuario
@@ -87,6 +112,12 @@ def asignar_correo_institucional(
     db: Session = Depends(get_db),
 ):
     return asignar_correo_institucional_controller(num_cuenta, data, db)
+
+# Eliminar definitivamente a un estudiante (solo si no tiene registros)
+@router.delete("/usuarios/{num_cuenta}", tags=["Usuarios"])
+@admin_general
+def eliminar_usuario(request: Request, num_cuenta: str, db: Session = Depends(get_db)):
+    return eliminar_estudiante_controller(num_cuenta, db)
 
 #Editar usuario
 @router.put("/usuarios/{num_cuenta}", tags=["Usuarios"])

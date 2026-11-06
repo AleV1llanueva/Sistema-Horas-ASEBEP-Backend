@@ -1,3 +1,5 @@
+import unicodedata
+
 from sqlalchemy.sql.operators import or_
 
 from fastapi import HTTPException, Request
@@ -79,6 +81,77 @@ def calcular_horas_totales(num_cuenta: str, db: Session) -> int:
     )
 
     return horas_base + horas_actividades
+
+
+def normalizar_busqueda(texto: Optional[str]) -> str:
+    """
+    Deja el texto comparable: sin tildes, sin mayúsculas y con un solo espacio.
+
+    También se usa sobre el nombre completo del becario, para que "perez"
+    encuentre a "Pérez" y "maria perez" cruce nombre y apellido.
+    """
+    limpio = " ".join((texto or "").split()).lower()
+    return "".join(
+        caracter
+        for caracter in unicodedata.normalize("NFD", limpio)
+        if unicodedata.category(caracter) != "Mn"
+    )
+
+
+def nombre_completo_de(usuario: Usuario) -> str:
+    return normalizar_busqueda(
+        " ".join(
+            parte
+            for parte in (
+                usuario.primer_nombre,
+                usuario.segundo_nombre,
+                usuario.primer_apellido,
+                usuario.segundo_apellido,
+            )
+            if parte
+        )
+    )
+
+
+def coincide_con_el_nombre(usuario: Usuario, texto_busqueda: str) -> bool:
+    """Comprueba el texto contra el nombre completo, sin importar el orden."""
+    palabras = texto_busqueda.split()
+    nombre = nombre_completo_de(usuario)
+
+    if texto_busqueda in nombre:
+        return True
+
+    return len(palabras) > 1 and all(
+        palabra in nombre for palabra in palabras
+    )
+
+
+def _coincide_sin_tildes(fila, texto_busqueda: str, por_nombre_completo=False) -> bool:
+    """
+    Compara una fila (becario, usuario, carrera, rol, estado) sin tildes.
+
+    Cubre lo que el filtro de SQL no puede con `lower`: apellidos, correos,
+    carrera y el nombre completo con el orden de las palabras cambiado.
+    """
+    becario, usuario, carrera, _, _ = fila
+
+    if por_nombre_completo and coincide_con_el_nombre(usuario, texto_busqueda):
+        return True
+
+    return any(
+        texto_busqueda in normalizar_busqueda(valor)
+        for valor in (
+            usuario.num_cuenta,
+            usuario.primer_nombre,
+            usuario.segundo_nombre,
+            usuario.primer_apellido,
+            usuario.segundo_apellido,
+            usuario.correo_institucional,
+            usuario.correo_personal,
+            usuario.telefono,
+            carrera.nombre_carrera if carrera else None,
+        )
+    )
 
 
 def calcular_periodo_pac(mes_inicio: int) -> str:
@@ -204,6 +277,27 @@ def user_controller(num_cuenta: int, request: Request, db: Session) -> LoginResp
     )
 
 
+def _consulta_becarios(db: Session):
+    """Filas base del listado: becario con correo institucional y periodo."""
+    return (
+        db.query(Becario, Usuario, Carrera, Rol, EstadoBeca)
+        .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
+        .outerjoin(Carrera, Usuario.carrera_id == Carrera.id)
+        .outerjoin(Rol, Usuario.rol_id == Rol.id)
+        .outerjoin(EstadoBeca, Becario.estado_beca_id == EstadoBeca.id)
+        .filter(Usuario.correo_institucional.isnot(None))
+        .filter(Usuario.correo_institucional != "")
+        .filter(
+            and_(
+                Becario.mes_inicio.isnot(None),
+                Becario.mes_inicio != 0,
+                Becario.anio_inicio.isnot(None),
+                Becario.anio_inicio != 0,
+            )
+        )
+    )
+
+
 # Controladore general
 # def obtener_todos_los_becarios_controller(db: Session) -> list[BecarioGeneralResponse]:
 #     # perfiles_becarios = db.query(Becario).all()
@@ -265,6 +359,26 @@ def obtener_todos_los_becarios_controller(
     se realiza solo sobre el conjunto filtrado, y los totales de horas y
     aportaciones se calculan únicamente para los becarios de la página.
     """
+    texto_busqueda = normalizar_busqueda(busqueda)
+
+    # Filtro por campos sueltos: cuenta, nombres, apellidos, correos,
+    # teléfono y carrera. Se usa `lower` en lugar de `ilike` para que
+    # funcione igual en PostgreSQL y SQLite.
+    filtro_busqueda = None
+    if texto_busqueda:
+        patron = f"%{texto_busqueda}%"
+        filtro_busqueda = or_(
+            func.lower(Usuario.num_cuenta).like(patron),
+            func.lower(Usuario.primer_nombre).like(patron),
+            func.lower(Usuario.segundo_nombre).like(patron),
+            func.lower(Usuario.primer_apellido).like(patron),
+            func.lower(Usuario.segundo_apellido).like(patron),
+            func.lower(Usuario.correo_institucional).like(patron),
+            func.lower(Usuario.correo_personal).like(patron),
+            Usuario.telefono.like(patron),
+            func.lower(Carrera.nombre_carrera).like(patron),
+        )
+
     # 1. Obtener el ID del estado "Aprobado" UNA SOLA VEZ
     estado_aprobado = (
         db.query(EstadoAportacion)
@@ -273,57 +387,51 @@ def obtener_todos_los_becarios_controller(
     )
     estado_aprobado_id = estado_aprobado.id if estado_aprobado else None
 
-    # 2. Consulta base con las mismas condiciones del listado original
-    consulta_base = (
-        db.query(Becario, Usuario, Carrera, Rol, EstadoBeca)
-        .join(Usuario, Becario.num_cuenta == Usuario.num_cuenta)
-        .outerjoin(Carrera, Usuario.carrera_id == Carrera.id)
-        .outerjoin(Rol, Usuario.rol_id == Rol.id)
-        .outerjoin(EstadoBeca, Becario.estado_beca_id == EstadoBeca.id)
-        .filter(Usuario.correo_institucional.isnot(None))
-        .filter(Usuario.correo_institucional != "")
-        .filter(
-            and_(
-                Becario.mes_inicio.isnot(None),
-                Becario.mes_inicio != 0,
-                Becario.anio_inicio.isnot(None),
-                Becario.anio_inicio != 0,
-            )
-        )
-    )
+    def consultar(aplicar_busqueda: bool):
+        consulta = _consulta_becarios(db)
 
-    if activo is not None:
-        consulta_base = consulta_base.filter(Usuario.active.is_(activo))
+        if activo is not None:
+            consulta = consulta.filter(Usuario.active.is_(activo))
 
-    texto_busqueda = (busqueda or "").strip()
+        if aplicar_busqueda and filtro_busqueda is not None:
+            consulta = consulta.filter(filtro_busqueda)
 
+        return consulta.order_by(
+            Usuario.primer_apellido, Usuario.primer_nombre
+        ).all()
+
+    filas_filtradas = consultar(aplicar_busqueda=True)
+
+    # El filtro de SQL no quita tildes: "contauduria" no encuentra
+    # "Contaduría" y "perez" no encuentra "Pérez". Se agregan en
+    # memoria los registros que coinciden sin tildes y por nombre completo.
     if texto_busqueda:
-        patron = f"%{texto_busqueda}%"
-        consulta_base = consulta_base.filter(
-            or_(
-                Usuario.num_cuenta.ilike(patron),
-                Usuario.primer_nombre.ilike(patron),
-                Usuario.segundo_nombre.ilike(patron),
-                Usuario.primer_apellido.ilike(patron),
-                Usuario.segundo_apellido.ilike(patron),
-                Usuario.correo_institucional.ilike(patron),
-                Carrera.nombre_carrera.ilike(patron),
-            )
+        cuentas_incluidas = {fila[0].num_cuenta for fila in filas_filtradas}
+        filas_filtradas = sorted(
+            filas_filtradas
+            + [
+                fila
+                for fila in consultar(aplicar_busqueda=False)
+                if fila[0].num_cuenta not in cuentas_incluidas
+                and _coincide_sin_tildes(
+                    fila, texto_busqueda, por_nombre_completo=True
+                )
+            ],
+            key=lambda fila: (
+                (fila[1].primer_apellido or ""),
+                (fila[1].primer_nombre or ""),
+                fila[0].num_cuenta,
+            ),
         )
-
-    consulta_base = consulta_base.order_by(Usuario.primer_apellido, Usuario.primer_nombre)
 
     usar_paginacion = pagina is not None and limite is not None
-
-    total = consulta_base.count() if usar_paginacion else 0
+    total = len(filas_filtradas)
 
     if usar_paginacion:
-        resultados_base = consulta_base.offset((pagina - 1) * limite).limit(limite).all()
+        inicio = (pagina - 1) * limite
+        resultados_base = filas_filtradas[inicio: inicio + limite]
     else:
-        resultados_base = consulta_base.all()
-
-    if not usar_paginacion:
-        total = len(resultados_base)
+        resultados_base = filas_filtradas
 
     if not resultados_base:
         return BecariosPaginadosResponse(
