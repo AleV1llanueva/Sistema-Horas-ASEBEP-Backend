@@ -17,11 +17,16 @@ def login_controller(data: LoginInput, db: Session) -> TokenResponse:
     if not usuario:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     
-    # Verificar que está activo antes de la contraseña
+    # Verificar que está activo antes de la contraseña.
+    # El código permite al portal enviar al usuario a activar su cuenta.
     if not usuario.active:
         raise HTTPException(
-            status_code=401,
-            detail="Usuario inactivo, solicita tu PIN"
+            status_code=403,
+            detail={
+                "mensaje": "Tu cuenta todavía no está activada",
+                "codigo": "cuenta_inactiva",
+                "num_cuenta": usuario.num_cuenta,
+            },
         )
 
     # Verificar que existe y que la contraseña es correcta
