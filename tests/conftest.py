@@ -13,7 +13,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["DATABASE_URL"] = "sqlite:///./asebep_pruebas.db"
 os.environ["SECRET_KEY"] = "clave-de-pruebas"
 os.environ["DOMINIO_CORREO"] = "unah.hn"
 

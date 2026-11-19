@@ -8,6 +8,7 @@ class AportacionResponse(BaseModel):
     num_referencia: str
     descripcion: Optional[str]
     ruta_pdf: str
+    ruta_imagen: Optional[str] = None
     estado: str
     meses_aprobados: int = 0
     fecha_subida: datetime

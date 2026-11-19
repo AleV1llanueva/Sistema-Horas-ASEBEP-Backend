@@ -21,15 +21,17 @@ def crear_aportacion(
     request: Request,
     num_referencia: str = Form(...),
     descripcion: str = Form(...),
-    archivo_pdf: UploadFile = File(...),
+    archivo_pdf: UploadFile | None = File(None),
+    archivo_imagen: UploadFile | None = File(None),
     db: Session = Depends(get_db)
 ):
     num_cuenta = request.state.num_cuenta
     return crear_aportacion_controller(
         num_cuenta=num_cuenta, 
         num_referencia=num_referencia, 
-        descripcion=descripcion,  # <--- Pasado al controlador
+        descripcion=descripcion,
         archivo_pdf=archivo_pdf, 
+        archivo_imagen=archivo_imagen,
         db=db
     )
 

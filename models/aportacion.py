@@ -11,6 +11,7 @@ class Aportacion(Base):
     num_referencia = Column(String, unique=True, index=True, nullable=False)
     descripcion= Column(String, nullable=True)
     ruta_pdf = Column(String, nullable=False)
+    ruta_imagen = Column(String, nullable=True)
     estado_aportacion_id = Column(Integer, ForeignKey("estados_aportacion.id"), nullable=False)
     fecha_subida = Column(DateTime, default=datetime.now)
     meses_aprobados = Column(Integer, nullable=False, default=0)
