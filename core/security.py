@@ -12,6 +12,16 @@ from starlette.concurrency import run_in_threadpool
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+
+# Una clave con espacios o vacía produce firmas distintas entre procesos y
+# los tokens se rechazan con "Signature verification failed". Es mejor
+# fallar al arrancar que descubrirlo en producción.
+if not SECRET_KEY or SECRET_KEY != SECRET_KEY.strip():
+    raise RuntimeError(
+        "SECRET_KEY no está definida o contiene espacios en los extremos. "
+        "Revisa el .env: SECRET_KEY=<valor> sin espacios ni comillas."
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRES_HOURS = 1
 DOMINIO_PERMITIDO = os.getenv("DOMINIO_CORREO", "unah.hn")
